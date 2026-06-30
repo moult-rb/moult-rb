@@ -43,16 +43,17 @@ index behind `deadcode` is [rubydex](https://github.com/Shopify/rubydex).
 Add to your Gemfile:
 
 ```ruby
-gem "moult"
+gem "moult-rb"
 ```
 
 Or install directly:
 
 ```sh
-gem install moult
+gem install moult-rb
 ```
 
-Requires Ruby 3.3+.
+The gem is published as `moult-rb`; the command and library are still `moult`
+(`require "moult"`, `moult hotspots`, …). Requires Ruby 3.3+.
 
 ## Usage
 
