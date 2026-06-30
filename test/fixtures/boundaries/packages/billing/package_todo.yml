@@ -1,0 +1,15 @@
+# This file contains a list of dependencies that are not part of the long term plan for the
+# 'packages/billing' package.
+# We should generally work to reduce this list over time.
+#
+# You can regenerate this file using the following command:
+#
+# bin/packwerk update-todo
+---
+packages/user:
+  "::User::Account":
+    violations:
+    - dependency
+    files:
+    - packages/billing/app/billing/invoice.rb
+    - packages/billing/app/billing/charge.rb

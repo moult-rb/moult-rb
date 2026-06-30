@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/deadcode.schema.json",
+  "title": "Moult dead-code report",
+  "description": "Typed output contract for `moult deadcode`. One of Moult's two protected APIs. Every finding is a confidence-graded candidate carrying its reasons; nothing here asserts that code is certainly dead.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only on a breaking change to this shape. v2 adds the runtime block (analysis.coverage provenance and a per-finding runtime field).",
+      "type": "integer",
+      "const": 2
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "coverage", "index"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "coverage": {
+          "description": "Provenance of merged runtime coverage (--coverage). Null when none was merged.",
+          "$ref": "common.schema.json#/$defs/coverage_source"
+        },
+        "index": {
+          "type": "object",
+          "required": ["backend", "backend_version", "resolved", "rails", "diagnostics"],
+          "additionalProperties": false,
+          "properties": {
+            "backend": {"type": "string"},
+            "backend_version": {"type": ["string", "null"]},
+            "resolved": {"type": "boolean"},
+            "rails": {"description": "Whether Rails entrypoint awareness was applied.", "type": "boolean"},
+            "diagnostics": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "reason": {
+      "description": "One auditable contribution to a finding's confidence.",
+      "type": "object",
+      "required": ["rule", "delta", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {"type": "string"},
+        "delta": {"description": "Signed adjustment this rule applied.", "type": "number"},
+        "detail": {"type": "string"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["symbol_id", "kind", "name", "span", "confidence", "category", "runtime", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol_id": {
+          "description": "Stable join key shared with the hotspots contract: \"<path>:<start_line>:<fqname>\".",
+          "type": "string"
+        },
+        "kind": {
+          "description": "What sort of definition this candidate is.",
+          "type": "string",
+          "enum": ["method", "constant"]
+        },
+        "name": {
+          "description": "Fully-qualified lexical name (Class#method or Class.method).",
+          "type": "string"
+        },
+        "span": {"$ref": "common.schema.json#/$defs/span"},
+        "confidence": {
+          "description": "Likelihood the candidate is actually dead, in [0, 1]. Never an assertion of certain death.",
+          "$ref": "common.schema.json#/$defs/unit_interval"
+        },
+        "category": {
+          "description": "Always \"dead_code\" in this contract.",
+          "type": "string"
+        },
+        "runtime": {
+          "description": "Runtime coverage classification merged from --coverage; null when no coverage was supplied. A runtime_cold/runtime_hot entry in reasons records its effect on the confidence.",
+          "$ref": "common.schema.json#/$defs/runtime"
+        },
+        "reasons": {
+          "description": "The factors that raised or lowered the confidence, in application order.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/reason"}
+        }
+      }
+    }
+  }
+}

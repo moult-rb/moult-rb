@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/flags.schema.json",
+  "title": "Moult feature-flags report",
+  "description": "Typed output contract for `moult flags`. One of Moult's two protected APIs. Each finding is one feature-flag key found by a static Prism scan of the OpenFeature client surface (provider-agnostic). Without --provider a flag reference is a recorded fact: confidence is null and the value_type/reference_count/default_values classification carries the signal (schema_version 1). With --provider a LOCAL provider snapshot (e.g. a flagd flag-definition export) is joined on the literal flag_key and each finding additionally carries a confidence-graded staleness candidate (status + confidence + reasons) and the report an analysis.provider provenance block (schema_version 2). The bump is additive: without a snapshot the output is byte-for-byte identical to v1. The snapshot is evidence (archived / fully rolled out / absent), never proof - nothing here asserts a flag is certainly stale, dead, or unused.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "summary", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "1 without a provider snapshot (usage only); 2 when --provider merges staleness candidates. The two share one additive shape: the v2-only blocks (analysis.provider, per-finding staleness, summary.by_staleness_status) are absent at v1.",
+      "type": "integer",
+      "enum": [1, 2]
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "scanner"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "provider": {
+          "description": "Provenance of a merged provider snapshot (--provider). Present only at schema_version 2; absent (the whole key omitted) without a snapshot.",
+          "$ref": "common.schema.json#/$defs/provider_source"
+        },
+        "scanner": {
+          "description": "Provenance of the static scan. This slice ingests no external tool output; it scans a client surface (the swap point for a future SDK/standard).",
+          "type": "object",
+          "required": ["target", "sdk_gem", "client_builder"],
+          "additionalProperties": false,
+          "properties": {
+            "target": {"description": "The flag standard scanned, e.g. \"openfeature\".", "type": "string"},
+            "sdk_gem": {"description": "The SDK gem whose call shape is detected (never a runtime dependency).", "type": "string"},
+            "client_builder": {"description": "The client constructor recognised, e.g. \"OpenFeature::SDK.build_client\".", "type": "string"}
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["flags", "references", "dynamic_references", "by_value_type"],
+      "additionalProperties": false,
+      "properties": {
+        "flags": {"description": "Number of distinct literal flag keys catalogued.", "type": "integer", "minimum": 0},
+        "references": {"description": "Total catalogued reference sites across all flags.", "type": "integer", "minimum": 0},
+        "dynamic_references": {"description": "Flag-evaluation calls whose key was not a literal (counted, not catalogued; a static scan cannot resolve the key).", "type": "integer", "minimum": 0},
+        "by_value_type": {"description": "Reference count keyed by value_type.", "type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "by_staleness_status": {"description": "Flag count keyed by staleness status. Present only at schema_version 2 (--provider).", "type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "reason": {
+      "description": "One auditable note behind a finding's classification.",
+      "type": "object",
+      "required": ["rule", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {"type": "string"},
+        "detail": {"type": "string"}
+      }
+    },
+    "occurrence": {
+      "description": "One reference site of a flag.",
+      "type": "object",
+      "required": ["symbol_id", "path", "line", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol_id": {
+          "description": "Best-effort enclosing-method join key (\"<path>:<start_line>:<fqname>\"), shared with the other contracts. Null for a top-level reference (outside any method).",
+          "type": ["string", "null"]
+        },
+        "path": {"description": "Root-relative referencing file path; the health files[] join key.", "type": "string"},
+        "line": {"description": "Call-site line (1-based).", "type": "integer", "minimum": 1},
+        "method": {"description": "The OpenFeature fetch method used at the site, e.g. \"fetch_boolean_value\" or \"fetch_string_details\". A plain string: the contract does not enumerate SDK method names.", "type": "string"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["category", "confidence", "flag_key", "value_type", "reference_count", "default_values", "reasons", "occurrences"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "description": "Always \"feature_flag\" in this contract.",
+          "type": "string",
+          "const": "feature_flag"
+        },
+        "confidence": {
+          "description": "Null at schema_version 1 (a flag reference is a recorded fact, not a probabilistic candidate). At schema_version 2 it carries the staleness candidate's confidence (== staleness.confidence): the reserved per-finding confidence slot's first real use in this contract. Still a confidence in [0, 1], never a certainty.",
+          "$ref": "common.schema.json#/$defs/confidence"
+        },
+        "flag_key": {"description": "The literal flag key passed as flag_key:.", "type": "string"},
+        "value_type": {
+          "description": "The flag's value type, read from the fetch_<type>_* method. integer/float collapse to number; unknown means the flag was referenced with more than one type. A classification of recorded usage, never an assertion the flag is wrong.",
+          "type": "string",
+          "enum": ["boolean", "string", "number", "object", "unknown"]
+        },
+        "reference_count": {"description": "Number of catalogued reference sites (equals occurrences length).", "type": "integer", "minimum": 1},
+        "default_values": {
+          "description": "Distinct literal default values observed across the sites (string-rendered, sorted). Empty when no default was a literal.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "reasons": {
+          "description": "The notes behind the classification.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/reason"}
+        },
+        "occurrences": {
+          "description": "The reference sites of this flag; at least one.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/occurrence"}
+        },
+        "staleness": {
+          "description": "A confidence-graded staleness candidate from the joined provider snapshot. Present only at schema_version 2 (--provider); the whole key is omitted without a snapshot. Evidence, never a claim of certain death.",
+          "$ref": "#/$defs/staleness"
+        }
+      }
+    },
+    "staleness": {
+      "description": "The staleness judgement for a flag, joined from the provider snapshot on flag_key. status records the observed lifecycle (archived/disabled/rolled_out/active) or absent (referenced in code, unknown to the provider); confidence grades how strong a removal candidate it is; reasons audit the call. active carries confidence 0.0 (not a removal candidate). Nothing here asserts certain death.",
+      "type": "object",
+      "required": ["status", "confidence", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["archived", "absent", "disabled", "rolled_out", "active"]
+        },
+        "confidence": {
+          "description": "Removal-candidate strength in [0, 1]. A confidence, never a certainty.",
+          "$ref": "common.schema.json#/$defs/unit_interval"
+        },
+        "reasons": {
+          "description": "The notes behind the staleness judgement.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/reason"}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,45 @@
+name: Release
+
+# Publishes the gem to RubyGems.org via Trusted Publishing (OIDC) when a
+# version tag is pushed. No API key is stored — GitHub Actions authenticates
+# to RubyGems.org with a short-lived OIDC token.
+#
+# Prerequisites (one-time, manual):
+#   1. Configure a Trusted Publisher for the `moult` gem on RubyGems.org
+#      (repo: moult-rb/moult-rb, workflow: release.yml, environment: release).
+#      https://guides.rubygems.org/trusted-publishing/
+#   2. Create a `release` GitHub environment (Settings → Environments) and,
+#      optionally, add a required-reviewer protection rule for an extra gate.
+#
+# To cut a release: bump lib/moult/version.rb, update CHANGELOG.md, commit,
+# then `git tag v0.1.0 && git push origin v0.1.0`.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write   # create the GitHub Release / push the tag commit
+      id-token: write   # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Verify suite + lint
+        run: bundle exec rake
+
+      - name: Publish to RubyGems via Trusted Publishing
+        uses: rubygems/release-gem@v1

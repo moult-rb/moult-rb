@@ -1,0 +1,4 @@
+{
+  "/project/lib/a.rb": { "lines": [1, 1, 0, null], "methods": {}, "branches": {} },
+  "/project/lib/b.rb": { "lines": [null, 0] }
+}

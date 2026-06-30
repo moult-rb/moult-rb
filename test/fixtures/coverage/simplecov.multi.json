@@ -1,0 +1,14 @@
+{
+  "RSpec": {
+    "coverage": {
+      "/project/lib/a.rb": { "lines": [1, 0, null, 0] }
+    },
+    "timestamp": 1750000000
+  },
+  "Minitest": {
+    "coverage": {
+      "/project/lib/a.rb": { "lines": [0, 1, null, null] }
+    },
+    "timestamp": 1750000500
+  }
+}

@@ -1,0 +1,75 @@
+name: moult-action
+description: Run moult gate and upload the sanitised result to Moult Cloud.
+
+inputs:
+  base-sha:
+    description: >
+      The merge-base commit SHA or branch ref to diff against.
+      Defaults to origin/main.
+    required: false
+    default: "origin/main"
+  moult-cloud-url:
+    description: The Moult Cloud API base URL (e.g. https://app.moult.dev).
+    required: true
+
+outputs: {}
+
+runs:
+  using: composite
+  steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        bundler-cache: true
+
+    - name: Run moult gate
+      shell: bash
+      run: bundle exec moult gate --base "${{ inputs.base-sha }}" --format json > gate.json
+
+    - name: Upload to Moult Cloud
+      shell: ruby {0}
+      env:
+        MOULT_CLOUD_URL: ${{ inputs.moult-cloud-url }}
+      run: |
+        require "json"
+        require "net/http"
+        require "uri"
+
+        $LOAD_PATH.unshift(File.join(__dir__, "lib"))
+        require "moult"
+
+        report  = JSON.parse(File.read("gate.json"))
+        payload = Moult::CloudUpload.projection(report)
+
+        # Fetch a GitHub OIDC JWT so the cloud can verify the caller's repo
+        # identity without a stored secret. The consuming workflow must have:
+        #   permissions:
+        #     id-token: write
+        oidc_url   = ENV.fetch("ACTIONS_ID_TOKEN_REQUEST_URL")
+        oidc_token = ENV.fetch("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+        jwt_resp   = Net::HTTP.get_response(
+          URI("#{oidc_url}&audience=moult-cloud"),
+          "Authorization" => "Bearer #{oidc_token}"
+        )
+        jwt = JSON.parse(jwt_resp.body).fetch("value")
+
+        uri  = URI("#{ENV.fetch("MOULT_CLOUD_URL")}/api/v1/scans")
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == "https"
+
+        req = Net::HTTP::Post.new(uri)
+        req["Content-Type"]  = "application/json"
+        req["Authorization"] = "Bearer #{jwt}"
+        req.body = JSON.generate(payload)
+
+        resp = http.request(req)
+        unless resp.is_a?(Net::HTTPSuccess)
+          warn "moult-action: upload failed (#{resp.code}): #{resp.body}"
+          exit 1
+        end
+        puts "moult-action: scan uploaded (#{resp.code})"

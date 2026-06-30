@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/duplication.schema.json",
+  "title": "Moult duplication report",
+  "description": "Typed output contract for `moult duplication`. One of Moult's two protected APIs. Every finding is a confidence-graded clone group carrying its reasons; nothing here asserts that duplication is certainly removable.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "summary", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only on a breaking change to this shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "detector"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "detector": {
+          "type": "object",
+          "required": ["backend", "backend_version", "min_mass", "fuzzy"],
+          "additionalProperties": false,
+          "properties": {
+            "backend": {"description": "Clone-detection backend, e.g. \"flay\".", "type": "string"},
+            "backend_version": {"type": ["string", "null"]},
+            "min_mass": {"description": "Mass threshold below which fragments were ignored.", "type": "integer", "minimum": 0},
+            "fuzzy": {"description": "Whether near-matches (not just structural-equivalents) were included.", "type": "boolean"}
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["sets", "occurrences", "total_mass"],
+      "additionalProperties": false,
+      "properties": {
+        "sets": {"description": "Number of clone groups.", "type": "integer", "minimum": 0},
+        "occurrences": {"description": "Total sites across all groups.", "type": "integer", "minimum": 0},
+        "total_mass": {"type": "integer", "minimum": 0}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "reason": {
+      "description": "One auditable contribution to a finding's confidence.",
+      "type": "object",
+      "required": ["rule", "delta", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {"type": "string"},
+        "delta": {"description": "Signed adjustment this rule applied.", "type": "number"},
+        "detail": {"type": "string"}
+      }
+    },
+    "occurrence": {
+      "description": "One site of a clone group.",
+      "type": "object",
+      "required": ["symbol_id", "path", "line", "fuzzy"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol_id": {
+          "description": "Best-effort enclosing-method join key (\"<path>:<start_line>:<fqname>\"), shared with the hotspots/deadcode contracts. Null when the fragment is not inside a known method (top-level code, or a duplicated whole class).",
+          "type": ["string", "null"]
+        },
+        "path": {"type": "string"},
+        "line": {"description": "Clone start line (flay reports line granularity).", "type": "integer", "minimum": 1},
+        "fuzzy": {"description": "True only for a near-match site surfaced in fuzzy mode.", "type": "boolean"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["category", "confidence", "kind", "node_type", "mass", "reasons", "occurrences"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "description": "Always \"duplication\" in this contract.",
+          "type": "string"
+        },
+        "confidence": {
+          "description": "Likelihood this is genuine, consolidatable duplication, in [0, 1]. Never an assertion of certainty.",
+          "$ref": "common.schema.json#/$defs/unit_interval"
+        },
+        "kind": {
+          "description": "identical=byte-for-byte match; similar=same structure, differing names/literals.",
+          "type": "string",
+          "enum": ["identical", "similar"]
+        },
+        "node_type": {
+          "description": "The duplicated AST node's type (flay sexp type, e.g. \"defn\", \"call\", \"class\").",
+          "type": "string"
+        },
+        "mass": {
+          "description": "flay's structural mass of the duplicated node.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasons": {
+          "description": "The factors that raised or lowered the confidence, in application order.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/reason"}
+        },
+        "occurrences": {
+          "description": "The sites of this clone group; a group has at least two.",
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/occurrence"}
+        }
+      }
+    }
+  }
+}

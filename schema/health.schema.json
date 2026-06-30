@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/health.schema.json",
+  "title": "Moult health report",
+  "description": "Typed output contract for `moult health`. One of Moult's two protected APIs. The composite is a confidence-graded health SIGNAL aggregated from the other analyses, never a verdict: it carries its contributing components and their reasons so the number is auditable, and it never asserts a pass/fail. The components list is open: future analyses (boundaries, flags) plug in as additional entries without a schema bump.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "overall", "components", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only on a breaking change to this shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "coverage", "churn"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "coverage": {"$ref": "common.schema.json#/$defs/coverage_source"},
+        "churn": {
+          "type": "object",
+          "required": ["window", "since"],
+          "additionalProperties": false,
+          "properties": {
+            "window": {"description": "Human description of the churn window fed to the complexity component.", "type": ["string", "null"]},
+            "since": {"description": "Resolved --since boundary, when an explicit one was given.", "type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "overall": {
+      "description": "The composite health signal. score/grade are null only when no component ran.",
+      "type": "object",
+      "required": ["score", "grade", "components_present", "components_total", "files_total"],
+      "additionalProperties": false,
+      "properties": {
+        "score": {"$ref": "#/$defs/nullable_unit_interval"},
+        "grade": {"$ref": "#/$defs/nullable_grade"},
+        "components_present": {"description": "Components that actually contributed to the composite.", "type": "integer", "minimum": 0},
+        "components_total": {"description": "Components considered (present + skipped + errored).", "type": "integer", "minimum": 0},
+        "files_total": {"description": "Signal-bearing files; files[] may be display-limited but this is the full count.", "type": "integer", "minimum": 0}
+      }
+    },
+    "components": {
+      "description": "One entry per considered analysis. Absent analyses still appear (present=false) so the record of what ran is honest. Open-ended: new analyses add entries without a schema bump.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/component"}
+    },
+    "files": {
+      "description": "Per-file roll-up, the cross-analysis join surface. Each file carries its contributing symbol_ids so findings join to the hotspots/deadcode/duplication/coverage contracts.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/file"}
+    }
+  },
+  "$defs": {
+    "nullable_unit_interval": {
+      "description": "A health score in [0, 1] (1 = healthy), or null where not asserted. A graded signal, never a verdict.",
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "common.schema.json#/$defs/unit_interval"}
+      ]
+    },
+    "grade": {
+      "description": "Letter grade bucketed from a health score. A coarse reading of the same signal, never a pass/fail gate.",
+      "type": "string",
+      "enum": ["A", "B", "C", "D", "F"]
+    },
+    "nullable_grade": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/grade"}
+      ]
+    },
+    "reason": {
+      "description": "One auditable contribution to a component's sub-score. `value` is the observed [0, 1] quantity (a ratio/sub-score), not a signed delta - health sub-scores are ratios, not delta-sums.",
+      "type": "object",
+      "required": ["rule", "value", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {"type": "string"},
+        "value": {"$ref": "common.schema.json#/$defs/unit_interval"},
+        "detail": {"type": "string"}
+      }
+    },
+    "component": {
+      "description": "One graded component of the composite. Carries its category, its static weight, its renormalized share among present components, an auditable stats summary, and its reasons. Never asserts certainty.",
+      "type": "object",
+      "required": ["name", "category", "present", "score", "weight", "normalized_weight", "summary", "reasons", "diagnostic"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"description": "Stable component slot key, e.g. \"complexity\", \"dead_code\", \"duplication\", \"coverage\".", "type": "string"},
+        "category": {"$ref": "common.schema.json#/$defs/category"},
+        "present": {"description": "Whether this analysis contributed to the composite.", "type": "boolean"},
+        "score": {
+          "description": "Health sub-score in [0, 1] (1 = healthy); null when the component is absent.",
+          "$ref": "#/$defs/nullable_unit_interval"
+        },
+        "weight": {
+          "description": "Static, pinned weight of this component before renormalization.",
+          "$ref": "common.schema.json#/$defs/unit_interval"
+        },
+        "normalized_weight": {
+          "description": "Share of the composite this component carried, renormalized over present components; null when absent.",
+          "$ref": "#/$defs/nullable_unit_interval"
+        },
+        "summary": {
+          "description": "Small free-form stats hash backing the sub-score (counts/ratios). Auditable, not a strict surface; {} when absent.",
+          "type": "object"
+        },
+        "reasons": {
+          "description": "The observations behind the sub-score, in application order.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/reason"}
+        },
+        "diagnostic": {
+          "description": "Why a component was skipped or errored; null when it contributed normally.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "file": {
+      "description": "One file's rolled-up health. Joins to the other analyses via the symbol_ids it lists.",
+      "type": "object",
+      "required": ["path", "score", "grade", "components", "symbol_ids", "symbol_count"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "score": {"$ref": "common.schema.json#/$defs/unit_interval"},
+        "grade": {"$ref": "#/$defs/grade"},
+        "components": {
+          "description": "Per-component sub-scores for this file, present components only. Open-ended map keyed by component name.",
+          "type": "object",
+          "additionalProperties": {"$ref": "common.schema.json#/$defs/unit_interval"}
+        },
+        "symbol_ids": {
+          "description": "Contributing join keys (\"<path>:<start_line>:<fqname>\"), shared with the other contracts. Capped for payload size; symbol_count records the true total.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "symbol_count": {"description": "Total contributing symbols before the symbol_ids cap.", "type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://flagd.dev/schema/v0/flags.json",
+  "flags": {
+    "new_checkout": {
+      "state": "ENABLED",
+      "variants": { "on": true, "off": false },
+      "defaultVariant": "off",
+      "targeting": {
+        "if": [{ "ends_with": [{ "var": "email" }, "@example.com"] }, "on", "off"]
+      }
+    },
+    "discount_pct": {
+      "state": "ENABLED",
+      "variants": { "full": 20, "none": 0 },
+      "defaultVariant": "none"
+    },
+    "checkout_label": {
+      "state": "DISABLED",
+      "variants": { "a": "Pay", "b": "Buy" },
+      "defaultVariant": "a"
+    },
+    "shipping_config": {
+      "state": "ENABLED",
+      "variants": { "default": {} },
+      "defaultVariant": "default",
+      "metadata": { "archived": true, "updatedAt": "2025-01-15T00:00:00Z" }
+    },
+    "verbose_shipping": {
+      "state": "ENABLED",
+      "variants": { "on": true, "off": false },
+      "defaultVariant": "off",
+      "metadata": { "lifecycle": "deprecated" }
+    },
+    "legacy_only": {
+      "state": "DISABLED",
+      "variants": { "on": true, "off": false },
+      "defaultVariant": "off"
+    }
+  },
+  "metadata": {
+    "flagSetId": "ecommerce",
+    "version": "42",
+    "exportedAt": "2026-06-01T00:00:00Z"
+  }
+}

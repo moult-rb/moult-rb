@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/hotspots.schema.json",
+  "title": "Moult hotspots report",
+  "description": "Typed output contract for `moult hotspots`. One of Moult's two protected APIs.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "hotspots"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only on a breaking change to this shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "churn"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "churn": {
+          "type": "object",
+          "required": ["window", "since"],
+          "additionalProperties": false,
+          "properties": {
+            "window": {"type": ["string", "null"]},
+            "since": {"type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "hotspots": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/hotspot"}
+    }
+  },
+  "$defs": {
+    "method": {
+      "type": "object",
+      "required": ["symbol_id", "name", "span", "abc", "confidence", "category"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol_id": {
+          "description": "Stable join key for the Phase 3 coverage merge: \"<path>:<start_line>:<fqname>\".",
+          "type": "string"
+        },
+        "name": {
+          "description": "Lexical fully-qualified name (Class#method or Class.method).",
+          "type": "string"
+        },
+        "span": {"$ref": "common.schema.json#/$defs/span"},
+        "abc": {
+          "description": "Flog-style weighted ABC complexity score.",
+          "type": "number",
+          "minimum": 0
+        },
+        "confidence": {"$ref": "common.schema.json#/$defs/confidence"},
+        "category": {"$ref": "common.schema.json#/$defs/category"}
+      }
+    },
+    "hotspot": {
+      "type": "object",
+      "required": ["path", "score", "complexity", "churn", "methods", "confidence", "category"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Path relative to the analysis root.",
+          "type": "string"
+        },
+        "score": {
+          "description": "Ranking score: complexity x churn.",
+          "type": "number",
+          "minimum": 0
+        },
+        "complexity": {
+          "description": "Aggregate ABC complexity for the file.",
+          "type": "number",
+          "minimum": 0
+        },
+        "churn": {
+          "description": "Commits touching the file within the churn window.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "methods": {
+          "description": "Worst methods in the file, highest ABC first.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/method"}
+        },
+        "confidence": {"$ref": "common.schema.json#/$defs/confidence"},
+        "category": {"$ref": "common.schema.json#/$defs/category"}
+      }
+    }
+  }
+}

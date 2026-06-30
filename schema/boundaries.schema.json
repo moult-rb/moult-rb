@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/boundaries.schema.json",
+  "title": "Moult architecture-boundaries report",
+  "description": "Typed output contract for `moult boundaries`. One of Moult's two protected APIs. Each finding is a recorded packwerk boundary violation, classified by severity. A violation is a recorded fact (packwerk resolved the constant via Zeitwerk and verified it crosses a declared boundary), so confidence is null and severity carries the signal; nothing here asserts the code is certainly wrong.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "summary", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only on a breaking change to this shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "detector"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "detector": {
+          "type": "object",
+          "required": ["backend", "backend_version", "configured"],
+          "additionalProperties": false,
+          "properties": {
+            "backend": {"description": "Boundary backend, e.g. \"packwerk\".", "type": "string"},
+            "backend_version": {"type": ["string", "null"]},
+            "configured": {"description": "Whether the project is packwerk-configured (a packwerk.yml exists). When false, findings is empty.", "type": "boolean"}
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["findings", "violations", "by_type", "by_severity"],
+      "additionalProperties": false,
+      "properties": {
+        "findings": {"description": "Number of violation groups.", "type": "integer", "minimum": 0},
+        "violations": {"description": "Total referencing sites across all groups.", "type": "integer", "minimum": 0},
+        "by_type": {"description": "Violation count keyed by violation type.", "type": "object", "additionalProperties": {"type": "integer", "minimum": 0}},
+        "by_severity": {"description": "Violation count keyed by severity.", "type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "reason": {
+      "description": "One auditable note behind a finding's severity classification.",
+      "type": "object",
+      "required": ["rule", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {"type": "string"},
+        "detail": {"type": "string"}
+      }
+    },
+    "occurrence": {
+      "description": "One referencing site of a violation group.",
+      "type": "object",
+      "required": ["symbol_id", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol_id": {
+          "description": "Method-level join key (\"<path>:<start_line>:<fqname>\"), shared with the other contracts. Null in this slice: packwerk's recorded violations are file-keyed (no line numbers), so no enclosing method is resolved. Findings join at path granularity. Kept nullable for forward-compatibility with line-level offenses.",
+          "type": ["string", "null"]
+        },
+        "path": {"description": "Root-relative referencing file path; the health files[] join key.", "type": "string"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["category", "confidence", "violation_type", "severity", "referencing_package", "defining_package", "constant", "reasons", "occurrences"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "description": "Always \"architecture_boundary\" in this contract.",
+          "type": "string",
+          "const": "architecture_boundary"
+        },
+        "confidence": {
+          "description": "Always null here: a packwerk violation is a recorded fact, not a probabilistic candidate. The per-finding signal is carried by `severity`, never by a manufactured confidence.",
+          "$ref": "common.schema.json#/$defs/confidence"
+        },
+        "violation_type": {
+          "description": "The packwerk violation kind.",
+          "type": "string",
+          "enum": ["dependency", "privacy", "visibility", "folder_privacy", "layer"]
+        },
+        "severity": {
+          "description": "How architecturally significant the violation kind is. A classification of the recorded fact, never an assertion the code is wrong.",
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "referencing_package": {"description": "The package making the boundary-crossing reference (\".\" for the root package).", "type": "string"},
+        "defining_package": {"description": "The package that owns the referenced constant.", "type": "string"},
+        "constant": {"description": "The constant that crosses the boundary.", "type": "string"},
+        "reasons": {
+          "description": "The notes behind the severity classification.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/reason"}
+        },
+        "occurrences": {
+          "description": "The referencing sites of this violation group; at least one.",
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/occurrence"}
+        }
+      }
+    }
+  }
+}

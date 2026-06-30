@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/common.schema.json",
+  "title": "Moult shared definitions",
+  "description": "Definitions shared across Moult's protected output contracts (hotspots, deadcode) so the confidence model and source spans cannot drift between them.",
+  "$defs": {
+    "unit_interval": {
+      "description": "A confidence in [0, 1]. Findings are confidence-graded, never asserted as certain death.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "confidence": {
+      "description": "Reserved nullable confidence slot. Null where an analysis does not (yet) assert a confidence; otherwise a value in [0, 1].",
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/unit_interval"}
+      ]
+    },
+    "category": {
+      "description": "Finding classification (e.g. \"dead_code\"). Null where unclassified.",
+      "type": ["string", "null"]
+    },
+    "span": {
+      "description": "Definition source range. Lines 1-based, columns 0-based (Prism offsets).",
+      "type": "object",
+      "required": ["start_line", "start_column", "end_line", "end_column"],
+      "additionalProperties": false,
+      "properties": {
+        "start_line": {"type": "integer", "minimum": 1},
+        "start_column": {"type": "integer", "minimum": 0},
+        "end_line": {"type": "integer", "minimum": 1},
+        "end_column": {"type": "integer", "minimum": 0}
+      }
+    },
+    "runtime": {
+      "description": "Runtime coverage classification for a symbol. hot=an executable body line ran; cold=tracked file, no body line ran; untracked=no signal (file absent from the dataset, a constant, or unclassifiable). Null where no coverage was merged. Evidence, never an assertion of certain death.",
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "enum": ["hot", "cold", "untracked"]}
+      ]
+    },
+    "coverage_source": {
+      "description": "Provenance of merged runtime coverage. Null where no coverage was merged.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["backend", "version", "collected_at"],
+          "additionalProperties": false,
+          "properties": {
+            "backend": {"description": "Coverage backend, e.g. \"simplecov\" or \"coverage\".", "type": "string"},
+            "version": {"type": ["string", "null"]},
+            "collected_at": {"type": ["string", "null"], "format": "date-time"}
+          }
+        }
+      ]
+    },
+    "provider_source": {
+      "description": "Provenance of a merged feature-flag provider snapshot (--provider). Null where no snapshot was merged. The flags analogue of coverage_source: evidence about which keys the provider knows, never a claim a flag is certainly stale.",
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["backend", "version", "exported_at"],
+          "additionalProperties": false,
+          "properties": {
+            "backend": {"description": "Provider snapshot backend, e.g. \"flagd\".", "type": "string"},
+            "version": {"type": ["string", "null"]},
+            "exported_at": {"type": ["string", "null"], "format": "date-time"}
+          }
+        }
+      ]
+    }
+  }
+}

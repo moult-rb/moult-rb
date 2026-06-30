@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/coverage.schema.json",
+  "title": "Moult runtime coverage map",
+  "description": "Typed output contract for `moult coverage`: a per-symbol hot/cold/untracked map produced by resolving line-keyed coverage to definition spans. A diagnostic view of the same runtime evidence `moult deadcode --coverage` merges into confidence; it makes no dead-code claim.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "summary", "symbols"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only on a breaking change to this shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "coverage", "index"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "coverage": {"$ref": "common.schema.json#/$defs/coverage_source"},
+        "index": {
+          "type": "object",
+          "required": ["backend", "backend_version", "resolved", "diagnostics"],
+          "additionalProperties": false,
+          "properties": {
+            "backend": {"type": "string"},
+            "backend_version": {"type": ["string", "null"]},
+            "resolved": {"type": "boolean"},
+            "diagnostics": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "summary": {
+      "description": "Counts of symbols by runtime classification.",
+      "type": "object",
+      "required": ["hot", "cold", "untracked"],
+      "additionalProperties": false,
+      "properties": {
+        "hot": {"type": "integer", "minimum": 0},
+        "cold": {"type": "integer", "minimum": 0},
+        "untracked": {"type": "integer", "minimum": 0}
+      }
+    },
+    "symbols": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/symbol"}
+    }
+  },
+  "$defs": {
+    "symbol": {
+      "type": "object",
+      "required": ["symbol_id", "kind", "name", "span", "runtime"],
+      "additionalProperties": false,
+      "properties": {
+        "symbol_id": {
+          "description": "Stable join key shared with the hotspots and deadcode contracts: \"<path>:<start_line>:<fqname>\".",
+          "type": "string"
+        },
+        "kind": {"type": "string", "enum": ["method", "constant"]},
+        "name": {"type": "string"},
+        "span": {"$ref": "common.schema.json#/$defs/span"},
+        "runtime": {
+          "description": "hot/cold/untracked. Never null here: `moult coverage` always merges a dataset.",
+          "type": "string",
+          "enum": ["hot", "cold", "untracked"]
+        }
+      }
+    }
+  }
+}

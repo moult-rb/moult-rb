@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/gate.schema.json",
+  "title": "Moult PR risk gate report",
+  "description": "Typed output contract for `moult gate`, the diff-aware PR risk gate. This is the ONLY Moult contract that renders a verdict: it consumes the confidence-graded / classified SIGNALS the other analyses emit (none of which carry pass/fail), scopes them to the changed lines/files (Clean as You Code), and applies an explicit, recorded policy. The verdict is an auditable application of that policy over confidence-graded candidates -- never a claim that code is certainly wrong or dead. No signal contract carries a verdict; it lives only here.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "policy", "verdict", "reasons", "summary", "rules"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only on a breaking change to this shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "base_ref", "merge_base", "scope", "components"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "base_ref": {
+          "description": "The requested base ref the diff is taken against (e.g. \"origin/main\"). Null under scope \"all\".",
+          "type": ["string", "null"]
+        },
+        "merge_base": {
+          "description": "The resolved merge-base sha between base_ref and HEAD -- the \"new code\" boundary. Null under scope \"all\".",
+          "type": ["string", "null"]
+        },
+        "scope": {
+          "description": "\"diff\" gates only findings intersecting the changed lines/files; \"all\" gates the whole codebase.",
+          "type": "string",
+          "enum": ["diff", "all"]
+        },
+        "components": {
+          "description": "Provenance: which signal analyses the gate composed, and which were skipped (errored or not applicable). Mirrors the health composer discipline.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/component"}
+        }
+      }
+    },
+    "policy": {
+      "description": "Every threshold that was applied, recorded in full so the verdict is reproducible and auditable.",
+      "type": "object",
+      "required": ["source", "dead_code_max_confidence", "boundary_max_severity", "complexity_ceiling", "duplication_max_mass", "exclude_paths"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {"description": "\"default\" or the config file the overrides came from.", "type": "string"},
+        "dead_code_max_confidence": {"$ref": "common.schema.json#/$defs/unit_interval"},
+        "boundary_max_severity": {"type": "string", "enum": ["low", "medium", "high"]},
+        "complexity_ceiling": {"type": "number", "minimum": 0},
+        "duplication_max_mass": {"type": "number", "minimum": 0},
+        "exclude_paths": {
+          "description": "Root-relative path prefixes dropped from gating (e.g. test/spec). The gate judges production code; override to [] to gate everything.",
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "verdict": {
+      "description": "The single top-level outcome. The only pass/fail in any Moult contract.",
+      "type": "string",
+      "enum": ["pass", "fail"]
+    },
+    "reasons": {
+      "description": "Why the verdict came out the way it did.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/reason"}
+    },
+    "summary": {
+      "type": "object",
+      "required": ["rules", "evaluated", "failed", "findings"],
+      "additionalProperties": false,
+      "properties": {
+        "rules": {"description": "Total policy rules.", "type": "integer", "minimum": 0},
+        "evaluated": {"description": "Rules whose backing analysis ran.", "type": "integer", "minimum": 0},
+        "failed": {"description": "Evaluated rules that the changes violated.", "type": "integer", "minimum": 0},
+        "findings": {"description": "Total contributing findings across failed rules.", "type": "integer", "minimum": 0}
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/rule"}
+    }
+  },
+  "$defs": {
+    "reason": {
+      "description": "One auditable note behind the verdict or a rule outcome.",
+      "type": "object",
+      "required": ["rule", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {"type": "string"},
+        "detail": {"type": "string"}
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": ["name", "present", "diagnostic"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "present": {"description": "Whether this analysis contributed observations.", "type": "boolean"},
+        "diagnostic": {"description": "Why it was skipped, when absent; null when present.", "type": ["string", "null"]}
+      }
+    },
+    "contribution": {
+      "description": "One finding that contributed to a rule outcome. Stays a confidence-graded / classified candidate: `value` is the observed signal, never an assertion of certainty.",
+      "type": "object",
+      "required": ["category", "path", "symbol_id", "line", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"$ref": "common.schema.json#/$defs/category"},
+        "path": {"description": "Root-relative file path.", "type": "string"},
+        "symbol_id": {
+          "description": "Method-level join key (\"<path>:<start_line>:<fqname>\"), shared with the other contracts. Null where the finding is file-keyed (boundaries) or outside any method.",
+          "type": ["string", "null"]
+        },
+        "line": {"description": "1-based line of the finding, when known; null for file-keyed findings.", "type": ["integer", "null"], "minimum": 1},
+        "value": {
+          "description": "The observed signal that tripped the rule (a confidence, an ABC score, a clone mass, or a severity). A graded/classified value, never a certainty.",
+          "type": ["number", "string", "null"]
+        }
+      }
+    },
+    "rule": {
+      "description": "One policy rule's outcome over the scoped changes.",
+      "type": "object",
+      "required": ["rule", "evaluated", "observed", "threshold", "passed", "reasons", "findings"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {
+          "type": "string",
+          "enum": ["no_new_dead_code", "no_new_high_severity_boundary", "new_code_complexity_ceiling", "new_code_duplication_ceiling"]
+        },
+        "evaluated": {"description": "False when the backing analysis didn't run; such a rule never fails the gate.", "type": "boolean"},
+        "observed": {
+          "description": "The worst observed value among scoped findings for this rule (max confidence/ABC/mass, or highest severity). Null when not evaluated or nothing was observed.",
+          "type": ["number", "string", "null"]
+        },
+        "threshold": {"description": "The applied threshold, rendered as a comparison (e.g. \"< 0.8\", \"<= medium\").", "type": "string"},
+        "passed": {"description": "Whether the changes satisfied the rule. Null when not evaluated.", "type": ["boolean", "null"]},
+        "reasons": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reason"}
+        },
+        "findings": {
+          "description": "The contributing findings (empty when the rule passed or was skipped).",
+          "type": "array",
+          "items": {"$ref": "#/$defs/contribution"}
+        }
+      }
+    }
+  }
+}

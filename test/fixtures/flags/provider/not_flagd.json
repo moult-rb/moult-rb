@@ -1,0 +1,5 @@
+{
+  "definitions": {
+    "some_flag": { "enabled": true }
+  }
+}
