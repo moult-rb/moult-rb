@@ -1,0 +1,31 @@
+name: Moult
+on: [pull_request]
+
+permissions:
+  contents: read
+  id-token: write            # lets the job mint a GitHub OIDC token
+
+jobs:
+  moult:
+    runs-on: ubuntu-latest
+    env:
+      MOULT_CLOUD_URL: https://moultrb.com
+    steps:
+      - uses: actions/checkout@v4
+      - run: gem install moult
+      - run: moult gate --format json > gate.json
+      - name: Upload results to Moult Cloud
+        run: |
+          token="$(curl -sH "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$MOULT_CLOUD_URL" | jq -r .value)"
+          payload="$(jq -n \
+            --arg sha    "${{ github.event.pull_request.head.sha }}" \
+            --arg branch "${{ github.head_ref }}" \
+            --argjson pr "${{ github.event.number }}" \
+            --slurpfile report gate.json \
+            '{commit_sha:$sha, branch:$branch, scan_type:"pr",
+              pull_request_number:$pr, report:$report[0]}')"
+          curl -fsS -X POST "$MOULT_CLOUD_URL/api/v1/scans" \
+            -H "Authorization: Bearer $token" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
