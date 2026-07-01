@@ -11,7 +11,9 @@ jobs:
     env:
       MOULT_CLOUD_URL: https://moultrb.com
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3' # Not needed with a .ruby-version, .tool-versions or mise.toml
