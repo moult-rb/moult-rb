@@ -7,10 +7,10 @@ Codebase intelligence for Ruby and Rails. Moult sheds dead code.
 Add the gate to your CI and upload results to Moult Cloud:
 
 ```yaml
-- uses: moult-rb/moult-rb@v1
+- uses: moult-rb/moult-rb@v0.1.0
   with:
     base-sha: ${{ github.event.pull_request.base.sha }}
-    moult-cloud-url: https://app.moult.dev
+    moult-cloud-url: https://moultrb.com
 ```
 
 Your workflow needs `permissions: id-token: write` for OIDC authentication.
