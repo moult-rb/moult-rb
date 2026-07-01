@@ -12,6 +12,9 @@ jobs:
       MOULT_CLOUD_URL: https://moultrb.com
     steps:
       - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3' # Not needed with a .ruby-version, .tool-versions or mise.toml
       - run: gem install moult
       - run: moult gate --format json > gate.json
       - name: Upload results to Moult Cloud
