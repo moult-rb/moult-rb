@@ -52,6 +52,7 @@ Or install directly:
 gem install moult
 ```
 
+
 The gem is published as `moult`; the command and library are still `moult`
 (`require "moult"`, `moult hotspots`, …). Requires Ruby 3.3+.
 
