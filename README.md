@@ -13,7 +13,9 @@ Add the gate to your CI and upload results to Moult Cloud:
     moult-cloud-url: https://moultrb.com
 ```
 
-Your workflow needs `permissions: id-token: write` for OIDC authentication.
+The action runs `bundle exec moult gate`, so the repository it runs in must have
+`moult-rb` in its `Gemfile` (see [Install](#install)). Your workflow also needs
+`permissions: id-token: write` for OIDC authentication.
 
 Three commands today:
 

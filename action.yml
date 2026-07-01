@@ -9,7 +9,7 @@ inputs:
     required: false
     default: "origin/main"
   moult-cloud-url:
-    description: The Moult Cloud API base URL (e.g. https://app.moult.dev).
+    description: The Moult Cloud API base URL (e.g. https://moultrb.com).
     required: true
 
 outputs: {}
@@ -35,13 +35,19 @@ runs:
       shell: ruby {0}
       env:
         MOULT_CLOUD_URL: ${{ inputs.moult-cloud-url }}
+        MOULT_ACTION_PATH: ${{ github.action_path }}
       run: |
         require "json"
         require "net/http"
         require "uri"
 
-        $LOAD_PATH.unshift(File.join(__dir__, "lib"))
-        require "moult"
+        # Load the sanitiser from the action's own checkout. This step runs as a
+        # bare `ruby` script (not `bundle exec`), and in a composite action the
+        # script's __dir__ is the runner temp dir, not the action root — so the
+        # load path has to come from github.action_path. Only CloudUpload is
+        # needed here and it has no dependencies, so require the single file.
+        $LOAD_PATH.unshift(File.join(ENV.fetch("MOULT_ACTION_PATH"), "lib"))
+        require "moult/cloud_upload"
 
         report  = JSON.parse(File.read("gate.json"))
         payload = Moult::CloudUpload.projection(report)
