@@ -2,15 +2,31 @@ name: moult-action
 description: Run moult gate and upload the sanitised result to Moult Cloud.
 
 inputs:
+  scan-type:
+    description: >
+      Scan type to upload: "pr", "baseline", or "auto" (default).
+      Auto derives from the triggering event: pull_request events become "pr";
+      push or workflow_dispatch on the repository's default branch become
+      "baseline" (seeding the baseline, then moving it forward on each push).
+      Any other event/branch combination fails and asks for an explicit value.
+    required: false
+    default: "auto"
   base-sha:
     description: >
-      The merge-base commit SHA or branch ref to diff against.
-      Defaults to origin/main.
+      The merge-base commit SHA or branch ref to diff against for "pr" scans.
+      Defaults to origin/main. Ignored for "baseline" scans, which always
+      cover the whole codebase.
     required: false
     default: "origin/main"
   moult-cloud-url:
     description: The Moult Cloud API base URL (e.g. https://app.moult.dev).
     required: true
+  oidc-audience:
+    description: >
+      Audience for the GitHub OIDC token; must match the Moult Cloud server's
+      MOULT_OIDC_AUDIENCE setting. Defaults to the moult-cloud-url value.
+    required: false
+    default: ""
 
 outputs: {}
 
@@ -27,24 +43,101 @@ runs:
       with:
         bundler-cache: true
 
-    - name: Run moult gate
+    - name: Resolve scan type
+      id: scan
       shell: bash
-      run: bundle exec moult gate --base "${{ inputs.base-sha }}" --format json > gate.json
+      env:
+        INPUT_SCAN_TYPE: ${{ inputs.scan-type }}
+        EVENT_NAME: ${{ github.event_name }}
+        REF_NAME: ${{ github.ref_name }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: |
+        scan_type="$INPUT_SCAN_TYPE"
+        if [ "$scan_type" = "auto" ]; then
+          case "$EVENT_NAME" in
+            pull_request|pull_request_target)
+              scan_type="pr"
+              ;;
+            push|workflow_dispatch)
+              if [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
+                scan_type="baseline"
+              else
+                echo "moult-action: cannot auto-derive a scan type for a" \
+                  "$EVENT_NAME on '$REF_NAME' (default branch is" \
+                  "'$DEFAULT_BRANCH'); set the scan-type input to 'pr' or" \
+                  "'baseline' explicitly." >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "moult-action: cannot auto-derive a scan type for a" \
+                "$EVENT_NAME event; set the scan-type input to 'pr' or" \
+                "'baseline' explicitly." >&2
+              exit 1
+              ;;
+          esac
+        fi
+        case "$scan_type" in
+          pr|baseline) ;;
+          *)
+            echo "moult-action: invalid scan-type '$scan_type'" \
+              "(expected 'auto', 'pr', or 'baseline')." >&2
+            exit 1
+            ;;
+        esac
+        echo "scan_type=$scan_type" >> "$GITHUB_OUTPUT"
+
+    - name: Run moult gate
+      id: gate
+      shell: bash
+      env:
+        SCAN_TYPE: ${{ steps.scan.outputs.scan_type }}
+        BASE_SHA: ${{ inputs.base-sha }}
+      run: |
+        # Baseline scans cover the whole codebase so the cloud's stored
+        # baseline reflects every finding, not just a diff; pr scans keep the
+        # diff-scoped gate. Exit 1 is a failing verdict — the report must
+        # still be uploaded, so only a tool error (exit 2) stops the job here;
+        # the verdict is re-enforced after the upload for pr scans.
+        set +e
+        if [ "$SCAN_TYPE" = "baseline" ]; then
+          bundle exec moult gate --scope all --format json > gate.json
+        else
+          bundle exec moult gate --base "$BASE_SHA" --format json > gate.json
+        fi
+        status=$?
+        set -e
+        if [ "$status" -gt 1 ]; then
+          exit "$status"
+        fi
+        echo "status=$status" >> "$GITHUB_OUTPUT"
 
     - name: Upload to Moult Cloud
       shell: ruby {0}
       env:
         MOULT_CLOUD_URL: ${{ inputs.moult-cloud-url }}
+        MOULT_OIDC_AUDIENCE: ${{ inputs.oidc-audience || inputs.moult-cloud-url }}
+        SCAN_TYPE: ${{ steps.scan.outputs.scan_type }}
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        BRANCH: ${{ github.head_ref || github.ref_name }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
       run: |
         require "json"
         require "net/http"
         require "uri"
 
-        $LOAD_PATH.unshift(File.join(__dir__, "lib"))
+        $LOAD_PATH.unshift(File.join(ENV.fetch("GITHUB_ACTION_PATH"), "lib"))
         require "moult"
 
         report  = JSON.parse(File.read("gate.json"))
-        payload = Moult::CloudUpload.projection(report)
+        payload = {
+          "commit_sha" => ENV.fetch("COMMIT_SHA"),
+          "branch"     => ENV.fetch("BRANCH"),
+          "scan_type"  => ENV.fetch("SCAN_TYPE"),
+          "report"     => Moult::CloudUpload.projection(report)
+        }
+        pr_number = ENV["PR_NUMBER"]
+        payload["pull_request_number"] = Integer(pr_number) unless pr_number.to_s.empty?
 
         # Fetch a GitHub OIDC JWT so the cloud can verify the caller's repo
         # identity without a stored secret. The consuming workflow must have:
@@ -52,8 +145,9 @@ runs:
         #     id-token: write
         oidc_url   = ENV.fetch("ACTIONS_ID_TOKEN_REQUEST_URL")
         oidc_token = ENV.fetch("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+        audience   = URI.encode_www_form_component(ENV.fetch("MOULT_OIDC_AUDIENCE"))
         jwt_resp   = Net::HTTP.get_response(
-          URI("#{oidc_url}&audience=moult-cloud"),
+          URI("#{oidc_url}&audience=#{audience}"),
           "Authorization" => "Bearer #{oidc_token}"
         )
         jwt = JSON.parse(jwt_resp.body).fetch("value")
@@ -72,4 +166,14 @@ runs:
           warn "moult-action: upload failed (#{resp.code}): #{resp.body}"
           exit 1
         end
-        puts "moult-action: scan uploaded (#{resp.code})"
+        puts "moult-action: #{payload["scan_type"]} scan uploaded (#{resp.code})"
+
+    - name: Enforce gate verdict
+      if: steps.scan.outputs.scan_type == 'pr'
+      shell: bash
+      env:
+        GATE_STATUS: ${{ steps.gate.outputs.status }}
+      run: |
+        # Baseline runs seed/advance the cloud baseline and never fail on the
+        # verdict; pr runs still gate the change after the upload happened.
+        exit "$GATE_STATUS"
