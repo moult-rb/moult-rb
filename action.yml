@@ -5,19 +5,21 @@ inputs:
   scan-type:
     description: >
       Scan type to upload: "pr", "baseline", or "auto" (default).
-      Auto derives from the triggering event: pull_request events become "pr";
-      push or workflow_dispatch on the repository's default branch become
-      "baseline" (seeding the baseline, then moving it forward on each push).
-      Any other event/branch combination fails and asks for an explicit value.
+      Auto derives from the triggering event: pull_request and merge_group
+      events become "pr"; push or workflow_dispatch on the repository's
+      default branch become "baseline" (seeding the baseline, then moving it
+      forward on each push). Any other event/branch combination fails and
+      asks for an explicit value.
     required: false
     default: "auto"
   base-sha:
     description: >
       The merge-base commit SHA or branch ref to diff against for "pr" scans.
-      Defaults to origin/main. Ignored for "baseline" scans, which always
-      cover the whole codebase.
+      Defaults to the pull request's base branch (or the merge queue's base
+      SHA), falling back to the repository's default branch. Ignored for
+      "baseline" scans, which always cover the whole codebase.
     required: false
-    default: "origin/main"
+    default: ""
   moult-cloud-url:
     description: >
       The Moult Cloud API base URL (e.g. https://moultrb.com). Only needs to
@@ -62,15 +64,25 @@ runs:
       shell: bash
       env:
         INPUT_SCAN_TYPE: ${{ inputs.scan-type }}
+        INPUT_BASE: ${{ inputs.base-sha }}
         EVENT_NAME: ${{ github.event_name }}
         REF_NAME: ${{ github.ref_name }}
+        BASE_REF: ${{ github.base_ref }}
+        MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
         scan_type="$INPUT_SCAN_TYPE"
         if [ "$scan_type" = "auto" ]; then
           case "$EVENT_NAME" in
-            pull_request|pull_request_target)
+            pull_request|merge_group)
               scan_type="pr"
+              ;;
+            pull_request_target)
+              echo "moult-action: pull_request_target checks out the base" \
+                "branch, so the diff would be empty and the gate would" \
+                "falsely pass; trigger on pull_request instead (or configure" \
+                "checkout and scan-type explicitly)." >&2
+              exit 1
               ;;
             push|workflow_dispatch)
               if [ "$REF_NAME" = "$DEFAULT_BRANCH" ]; then
@@ -99,14 +111,28 @@ runs:
             exit 1
             ;;
         esac
+        # Resolve the diff base for pr scans: an explicit input wins, else the
+        # merge queue's base SHA, else the PR's base branch, else the
+        # repository default branch.
+        base="$INPUT_BASE"
+        if [ -z "$base" ]; then
+          if [ -n "$MERGE_GROUP_BASE_SHA" ]; then
+            base="$MERGE_GROUP_BASE_SHA"
+          elif [ -n "$BASE_REF" ]; then
+            base="origin/$BASE_REF"
+          else
+            base="origin/$DEFAULT_BRANCH"
+          fi
+        fi
         echo "scan_type=$scan_type" >> "$GITHUB_OUTPUT"
+        echo "base=$base" >> "$GITHUB_OUTPUT"
 
     - name: Run moult gate
       id: gate
       shell: bash
       env:
         SCAN_TYPE: ${{ steps.scan.outputs.scan_type }}
-        BASE_SHA: ${{ inputs.base-sha }}
+        BASE_SHA: ${{ steps.scan.outputs.base }}
       run: |
         # Baseline scans cover the whole codebase so the cloud's stored
         # baseline reflects every finding, not just a diff; pr scans keep the
@@ -135,10 +161,21 @@ runs:
         COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         BRANCH: ${{ github.head_ref || github.ref_name }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
       run: |
         require "json"
         require "net/http"
         require "uri"
+
+        # GitHub issues no OIDC identity to pull requests from forks (by
+        # design), so the upload is impossible there. The gate has already
+        # run — skip the upload, keep the verdict.
+        if ENV["FORK_PR"] == "true"
+          puts "::notice::moult-action: pull request from a fork — GitHub " \
+               "issues no OIDC identity for fork PRs, so the result is not " \
+               "uploaded; the gate verdict is still enforced."
+          exit 0
+        end
 
         $LOAD_PATH.unshift(File.join(ENV.fetch("GITHUB_ACTION_PATH"), "lib"))
         require "moult"
@@ -154,16 +191,24 @@ runs:
         payload["pull_request_number"] = Integer(pr_number) unless pr_number.to_s.empty?
 
         # Fetch a GitHub OIDC JWT so the cloud can verify the caller's repo
-        # identity without a stored secret. The consuming workflow must have:
-        #   permissions:
-        #     id-token: write
-        oidc_url   = ENV.fetch("ACTIONS_ID_TOKEN_REQUEST_URL")
-        oidc_token = ENV.fetch("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
-        audience   = URI.encode_www_form_component(ENV.fetch("MOULT_OIDC_AUDIENCE"))
-        jwt_resp   = Net::HTTP.get_response(
+        # identity without a stored secret. GitHub only injects the request
+        # env vars when the workflow grants `permissions: id-token: write`.
+        oidc_url   = ENV["ACTIONS_ID_TOKEN_REQUEST_URL"]
+        oidc_token = ENV["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+        if oidc_url.to_s.empty? || oidc_token.to_s.empty?
+          abort 'moult-action: no GitHub OIDC token available — add ' \
+                '"permissions: id-token: write" to the workflow so the ' \
+                'action can authenticate to Moult Cloud.'
+        end
+        audience = URI.encode_www_form_component(ENV.fetch("MOULT_OIDC_AUDIENCE"))
+        jwt_resp = Net::HTTP.get_response(
           URI("#{oidc_url}&audience=#{audience}"),
           "Authorization" => "Bearer #{oidc_token}"
         )
+        unless jwt_resp.is_a?(Net::HTTPSuccess)
+          abort "moult-action: GitHub OIDC token request failed " \
+                "(#{jwt_resp.code}): #{jwt_resp.body}"
+        end
         jwt = JSON.parse(jwt_resp.body).fetch("value")
 
         uri  = URI("#{ENV.fetch("MOULT_CLOUD_URL")}/api/v1/scans")

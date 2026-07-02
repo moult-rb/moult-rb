@@ -27,11 +27,15 @@ jobs:
 
 That's the whole file. The action checks out your code (full history),
 installs moult itself, runs the gate, and uploads the result — your repo does
-not need moult in its Gemfile. Two prerequisites:
+not need moult in its Gemfile. Three prerequisites:
 
 1. Install the [Moult Cloud GitHub App](https://github.com/apps/moult-cloud)
    on the repository.
-2. A `.ruby-version` or `.tool-versions` file in the repository (read by
+2. `permissions: id-token: write` on the workflow or job (shown above) — it
+   lets the action mint the GitHub OIDC token that authenticates the upload.
+   Pull requests from forks never receive an OIDC identity, so they are
+   gated in CI but their results are not uploaded.
+3. A `.ruby-version` or `.tool-versions` file in the repository (read by
    `ruby/setup-ruby`; Ruby 3.3+).
 
 Results appear on your dashboard at [moultrb.com](https://moultrb.com). The
