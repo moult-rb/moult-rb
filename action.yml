@@ -19,8 +19,11 @@ inputs:
     required: false
     default: "origin/main"
   moult-cloud-url:
-    description: The Moult Cloud API base URL (e.g. https://app.moult.dev).
-    required: true
+    description: >
+      The Moult Cloud API base URL (e.g. https://moultrb.com). Only needs to
+      be set for self-hosted Moult Cloud instances.
+    required: false
+    default: "https://moultrb.com"
   oidc-audience:
     description: >
       Audience for the GitHub OIDC token; must match the Moult Cloud server's
@@ -39,9 +42,20 @@ runs:
         fetch-depth: 0
 
     - name: Set up Ruby
+      # Reads the Ruby version from the caller repo's .ruby-version or
+      # .tool-versions file. The caller's bundle is not installed — moult is
+      # installed from the action checkout below, so the caller repo does not
+      # need moult (or even a Gemfile) at all.
       uses: ruby/setup-ruby@v1
-      with:
-        bundler-cache: true
+
+    - name: Install moult
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        # Build and install the exact moult version checked out with this
+        # action ref — the caller repo does not need moult in its Gemfile.
+        gem build moult.gemspec -o moult.gem
+        gem install --no-document moult.gem
 
     - name: Resolve scan type
       id: scan
@@ -101,9 +115,9 @@ runs:
         # the verdict is re-enforced after the upload for pr scans.
         set +e
         if [ "$SCAN_TYPE" = "baseline" ]; then
-          bundle exec moult gate --scope all --format json > gate.json
+          moult gate --scope all --format json > gate.json
         else
-          bundle exec moult gate --base "$BASE_SHA" --format json > gate.json
+          moult gate --base "$BASE_SHA" --format json > gate.json
         fi
         status=$?
         set -e

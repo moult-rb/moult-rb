@@ -4,16 +4,39 @@ Codebase intelligence for Ruby and Rails. Moult sheds dead code.
 
 ## moult-action (GitHub Action)
 
-Add the gate to your CI and upload results to Moult Cloud:
+Add the gate to your CI and upload results to Moult Cloud. Create
+`.github/workflows/moult.yml` with:
 
 ```yaml
-- uses: moult-rb/moult-rb@v0.1.0
-  with:
-    base-sha: ${{ github.event.pull_request.base.sha }}
-    moult-cloud-url: https://moultrb.com
+name: Moult
+on:
+  push:
+    branches: [main]   # seeds/advances the baseline on merge
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write      # keyless OIDC auth to Moult Cloud
+
+jobs:
+  moult:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: moult-rb/moult-rb@v1
 ```
 
-Your workflow needs `permissions: id-token: write` for OIDC authentication.
+That's the whole file. The action checks out your code (full history),
+installs moult itself, runs the gate, and uploads the result — your repo does
+not need moult in its Gemfile. Two prerequisites:
+
+1. Install the [Moult Cloud GitHub App](https://github.com/apps/moult-cloud)
+   on the repository.
+2. A `.ruby-version` or `.tool-versions` file in the repository (read by
+   `ruby/setup-ruby`; Ruby 3.3+).
+
+Results appear on your dashboard at [moultrb.com](https://moultrb.com). The
+`moult-cloud-url` input only needs setting for self-hosted Moult Cloud
+instances.
 
 Three commands today:
 
@@ -318,9 +341,10 @@ Outside a git repository churn is `0`, so files rank by complexity alone.
 
 The `moult` gem — the CLI and every analysis in it — is free and open source
 under [Apache-2.0](LICENSE.txt). **Moult Cloud** is a separate commercial
-product: a hosted GitHub App that turns `moult gate` into an enforced,
-team-visible PR check with history, trends, and dashboards. The gem stands on
-its own; the cloud is optional.
+product: a hosted [GitHub App](https://github.com/apps/moult-cloud) that turns
+`moult gate` into an enforced, team-visible PR check with history, trends, and
+dashboards at [moultrb.com](https://moultrb.com). The gem stands on its own;
+the cloud is optional.
 
 ## Contributing
 
