@@ -19,10 +19,20 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   CI and uploads the projected result with keyless GitHub OIDC auth.
 - Open-source release setup: Apache-2.0 license, Trusted Publishing release
   workflow, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`.
+- `.ruby-version` (3.3), read by `ruby/setup-ruby` in CI and in the action.
 
 ### Changed
 - License changed from MIT to **Apache-2.0** (adds an explicit patent grant;
   the chosen open-core core license).
+- `moult-action` installs moult from the action checkout instead of running
+  `bundle exec` against the caller's bundle — consuming repos no longer need
+  moult in their Gemfile (or a Gemfile at all).
+- `moult-action`'s `moult-cloud-url` input now defaults to
+  `https://moultrb.com`, so a bare `- uses: moult-rb/moult-rb@v1` step works
+  with no `with:` block; the input remains overridable for self-hosted
+  instances.
+- Release workflow only triggers on full-semver tags (`vX.Y.Z`), so the
+  floating `v1` major tag can be re-pointed without triggering a gem publish.
 
 ## [0.1.0] - unreleased
 
