@@ -11,6 +11,11 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-02
+
+(v0.2.0 was tagged in git but never published as a gem — its changes are
+included here.)
+
 ### Added
 - `Moult::CloudUpload.projection` — the sanitised payload builder for the
   `moult-action` → Moult Cloud upload (allow-lists top-level keys; normalises
@@ -53,7 +58,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   against the queue's base SHA) and rejects `pull_request_target`, which
   checks out the base branch and would silently gate an empty diff as a pass.
 
-## [0.1.0] - unreleased
+## [0.1.0] - 2026-06-30
 
 Initial development version. The static + runtime analysis suite:
 
@@ -69,5 +74,6 @@ Initial development version. The static + runtime analysis suite:
 - `moult health` — composite, confidence-graded health score.
 - `moult gate` — diff-aware PR risk gate (the only verdict layer).
 
-[Unreleased]: https://github.com/moult-rb/moult-rb/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/moult-rb/moult-rb/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/moult-rb/moult-rb/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/moult-rb/moult-rb/releases/tag/v0.1.0
