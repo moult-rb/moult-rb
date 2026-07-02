@@ -11,10 +11,6 @@ permissions:
 jobs:
   moult:
     runs-on: ubuntu-latest
-    # Temporary, until Moult Cloud onboarding for this repo is verified live —
-    # the upload may 4xx before then (and fork PRs can't mint an OIDC token).
-    # Remove after the first verified end-to-end run.
-    continue-on-error: true
     steps:
       # Checkout is needed so `uses: ./` can resolve action.yml; the action
       # then re-checkouts with full history itself.
