@@ -3,7 +3,7 @@
 require_relative "lib/moult/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "moult-rb"
+  spec.name = "moult"
   spec.version = Moult::VERSION
   spec.authors = ["The Moult authors"]
   spec.email = ["contact@moult.dev"]

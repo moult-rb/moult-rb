@@ -33,6 +33,25 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   instances.
 - Release workflow only triggers on full-semver tags (`vX.Y.Z`), so the
   floating `v1` major tag can be re-pointed without triggering a gem publish.
+- The gem publishes as `moult` again (reverting the brief `moult-rb` rename):
+  `moult` 0.1.0 is already the published package, and `gem install moult`
+  should keep resolving to current releases. The repository and action stay
+  `moult-rb/moult-rb`.
+
+### Fixed
+- `moult-action` fails with an actionable message — instead of a raw Ruby
+  `KeyError` backtrace — when the workflow is missing
+  `permissions: id-token: write`, and cleanly skips the upload (verdict still
+  enforced) on pull requests from forks, which GitHub never grants an OIDC
+  identity. Non-2xx responses from GitHub's token endpoint are now reported
+  with their status and body.
+- `moult-action`'s `base-sha` now defaults to the pull request's base branch
+  (or the merge queue's base SHA), falling back to the repository's default
+  branch — previously a hardcoded `origin/main` broke PR scans in any
+  repository whose base branch isn't `main`.
+- `moult-action` auto mode maps `merge_group` events to `pr` scans (diffed
+  against the queue's base SHA) and rejects `pull_request_target`, which
+  checks out the base branch and would silently gate an empty diff as a pass.
 
 ## [0.1.0] - unreleased
 
