@@ -5,8 +5,8 @@ require_relative "lib/moult/version"
 Gem::Specification.new do |spec|
   spec.name = "moult"
   spec.version = Moult::VERSION
-  spec.authors = ["The Moult authors"]
-  spec.email = ["contact@moult.dev"]
+  spec.authors = ["Brandyn Britton"]
+  spec.email = ["brandynbb96@gmail.com"]
 
   spec.summary = "Confidence-graded codebase intelligence for Ruby and Rails."
   spec.description = "Moult sheds dead code. `moult hotspots` ranks files by a complexity x churn " \
