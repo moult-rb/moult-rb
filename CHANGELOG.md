@@ -11,6 +11,19 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- `clone_group` on duplication findings and gate contributions — a
+  `"<kind>:<structural-hash>"` join key (kind `identical`|`similar`) shared by
+  every occurrence of a clone group, so consumers can link exact twins. Null on
+  non-duplication contributions. Additive/optional in both schemas, so
+  `schema_version` stays 1.
+
+### Changed
+- The gate now emits one duplication contribution per in-diff occurrence
+  (previously one per clone group, attributed to its first in-diff
+  occurrence), so every site of a clone is visible downstream. Verdicts are
+  unchanged, and rule reasons still count clone groups.
+
 ## [0.3.0] - 2026-07-02
 
 (v0.2.0 was tagged in git but never published as a gem — its changes are

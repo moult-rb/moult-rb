@@ -83,6 +83,20 @@ class TestGateContract < Minitest::Test
     assert_in_delta 0.85, finding["value"], 0.0001
   end
 
+  def test_duplication_findings_share_a_clone_group_and_count_as_one
+    dup = @data.fetch("rules").find { |r| r["rule"] == "new_code_duplication_ceiling" }
+    assert_equal false, dup["passed"]
+    assert_equal 2, dup["findings"].size, "each occurrence of the clone is its own contribution"
+    assert_equal ["identical:190423"], dup["findings"].map { |f| f["clone_group"] }.uniq
+    assert_match(/\A1 clone group/, dup["reasons"].first["detail"], "reasons count groups, not occurrences")
+  end
+
+  def test_clone_group_is_null_outside_duplication
+    dead = @data.fetch("rules").find { |r| r["rule"] == "no_new_dead_code" }
+    assert dead["findings"].first.key?("clone_group")
+    assert_nil dead["findings"].first["clone_group"]
+  end
+
   # The whole point of the separation: a verdict lives here and ONLY here. No
   # signal contract may grow a pass/fail.
   def test_verdict_appears_only_in_the_gate_contract

@@ -193,6 +193,7 @@ module TestHelpers
       kind: :identical,
       node_type: "defn",
       mass: 92,
+      clone_group: "identical:190423",
       reasons: [
         reason.call(:base_score, 0.6, "identical structural match (byte-for-byte)"),
         reason.call(:medium_mass, 0.1, "moderate duplicated mass (92)"),
@@ -208,6 +209,7 @@ module TestHelpers
       kind: :similar,
       node_type: "call",
       mass: 34,
+      clone_group: "similar:88231",
       reasons: [reason.call(:base_score, 0.45, "structurally-similar match (names/literals differ)")],
       occurrences: [
         occ.call(nil, "config/initializers/a.rb", 3),
@@ -387,16 +389,20 @@ module TestHelpers
   end
 
   # A small, fully-populated GateReport for serialization/schema tests. Exercises
-  # a FAIL verdict with mixed rule outcomes: a failed rule with a contributing
-  # finding (dead code), a passed rule (complexity), a skipped rule (boundaries,
-  # non-packwerk repo), plus a present + absent component view.
+  # a FAIL verdict with mixed rule outcomes: failed rules with contributing
+  # findings (dead code; a two-occurrence clone group sharing a clone_group key),
+  # a passed rule (complexity), a skipped rule (boundaries, non-packwerk repo),
+  # plus a present + absent component view.
   def sample_gate_report
     e = Moult::Gate::Evaluation
     policy = Moult::Gate::Policy.default
     observations = e::Observations.new(
       dead_code: [e::DeadCodeObs.new(symbol_id: "app/models/user.rb:7:User#stale", path: "app/models/user.rb", line: 7, confidence: 0.85)],
       complexity: [e::ComplexityObs.new(symbol_id: "app/models/user.rb:12:User#normalize", path: "app/models/user.rb", line: 12, abc: 8.0)],
-      duplication: [],
+      duplication: [
+        e::DuplicationObs.new(symbol_id: "app/models/user.rb:20:User#emit", path: "app/models/user.rb", line: 20, mass: 116, clone_group: "identical:190423"),
+        e::DuplicationObs.new(symbol_id: "app/models/account.rb:9:Account#emit", path: "app/models/account.rb", line: 9, mass: 116, clone_group: "identical:190423")
+      ],
       boundaries: nil,
       diagnostics: {boundaries: "not a packwerk project (no packwerk.yml)"}
     )

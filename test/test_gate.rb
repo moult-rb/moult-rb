@@ -128,3 +128,19 @@ class TestGate < Minitest::Test
     report.rules.find { |r| r.rule == name }
   end
 end
+
+# Scoping is pure given a Diff, so the per-occurrence duplication fan-out is
+# pinned directly (no need to coax flay into an over-threshold clone).
+class TestGateScoping < Minitest::Test
+  def test_duplication_scopes_one_observation_per_in_diff_occurrence
+    run = Moult::Gate::Run.new(value: sample_duplication_report, error: nil)
+    diff = Moult::Diff.compute(root: nil, base_ref: nil, scope: :all)
+
+    obs = Moult::Gate.scope_duplication(run, diff)
+
+    assert_equal 4, obs.size, "every occurrence of every group becomes an observation"
+    identical = obs.select { |o| o.clone_group == "identical:190423" }
+    assert_equal ["app/models/account.rb", "app/models/user.rb"], identical.map(&:path).sort
+    assert(identical.all? { |o| o.mass == 92 }, "mass stays a group property on every occurrence")
+  end
+end

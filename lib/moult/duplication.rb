@@ -63,6 +63,7 @@ module Moult
         kind: set.kind,
         node_type: set.node_type,
         mass: set.mass,
+        clone_group: "#{set.kind}:#{set.structural_hash}",
         reasons: assessment.reasons,
         occurrences: occurrences
       )

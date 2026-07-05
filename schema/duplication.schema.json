@@ -111,6 +111,10 @@
           "type": "integer",
           "minimum": 0
         },
+        "clone_group": {
+          "description": "Clone-group join key, \"<kind>:<structural-hash>\" where kind is identical|similar. Every occurrence of this finding shares it. Stable within a report only (the hash comes from the detector backend).",
+          "type": ["string", "null"]
+        },
         "reasons": {
           "description": "The factors that raised or lowered the confidence, in application order.",
           "type": "array",

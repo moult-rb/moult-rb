@@ -130,6 +130,10 @@
         "value": {
           "description": "The observed signal that tripped the rule (a confidence, an ABC score, a clone mass, or a severity). A graded/classified value, never a certainty.",
           "type": ["number", "string", "null"]
+        },
+        "clone_group": {
+          "description": "Clone-group join key, \"<kind>:<structural-hash>\" where kind is identical|similar. Contributions sharing a value are occurrences of the same clone group. Stable within a report only. Null for non-duplication findings.",
+          "type": ["string", "null"]
         }
       }
     },
