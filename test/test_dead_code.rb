@@ -17,14 +17,15 @@ class TestDeadCode < Minitest::Test
     def diagnostics = []
   end
 
-  def defn(name:, path:, unqualified:, kind: :method, visibility: :public, refs: [], ref_count: nil, override_of: nil)
+  def defn(name:, path:, unqualified:, kind: :method, visibility: :public, refs: [], ref_count: nil,
+    override_of: nil, hierarchy_refs: nil)
     Moult::Index::Definition.new(
       symbol_id: "#{path}:1:#{name}", kind: kind, name: name, unqualified_name: unqualified,
       owner: name.split(/[#.]/).first, visibility: visibility,
       singleton: !name.include?("#"),
       span: Moult::Span.new(start_line: 1, start_column: 0, end_line: 2, end_column: 3),
       path: path, reference_count: ref_count || refs.size, reference_paths: refs,
-      override_of: override_of
+      override_of: override_of, owner_hierarchy_reference_paths: hierarchy_refs
     )
   end
 
@@ -39,7 +40,18 @@ class TestDeadCode < Minitest::Test
       defn(name: "UsersController#authenticate", path: "app/controllers/users_controller.rb", unqualified: "authenticate", visibility: :private),
       defn(name: "UsersController#truly_dead", path: "app/controllers/users_controller.rb", unqualified: "truly_dead", visibility: :private),
       defn(name: "EmailJob#perform", path: "app/jobs/email_job.rb", unqualified: "perform"),
-      defn(name: "Calculator#to_s", path: "plain.rb", unqualified: "to_s", override_of: "Object#to_s")
+      defn(name: "Calculator#to_s", path: "plain.rb", unqualified: "to_s", override_of: "Object#to_s"),
+      # Ancestor-liveness fixtures: a production-referenced base, a test-only
+      # one, and an override pointing at each.
+      defn(name: "LiveBase", path: "plain.rb", unqualified: "LiveBase", kind: :constant, refs: ["plain.rb"]),
+      defn(name: "DeadBase", path: "plain.rb", unqualified: "DeadBase", kind: :constant, refs: ["test/base_test.rb"], ref_count: 1),
+      defn(name: "Widget#render", path: "plain.rb", unqualified: "render", override_of: "LiveBase"),
+      defn(name: "Relic#render", path: "plain.rb", unqualified: "render", override_of: "DeadBase"),
+      # Hierarchy-reachability fixtures: an unreferenced tree, a referenced
+      # one, and one referenced only from tests.
+      defn(name: "Orphan#run", path: "plain.rb", unqualified: "run", hierarchy_refs: []),
+      defn(name: "Reached#run", path: "plain.rb", unqualified: "run", hierarchy_refs: ["app/x.rb"]),
+      defn(name: "TestReached#run", path: "plain.rb", unqualified: "run", hierarchy_refs: ["test/x_test.rb"])
     ]
   end
 
@@ -108,7 +120,34 @@ class TestDeadCode < Minitest::Test
   def test_override_lowered_but_kept
     f = finding("Calculator#to_s")
     refute_nil f, "an override is reachable via the ancestor, but still a candidate"
+    # Object is not indexed in-workspace: liveness unknown, conservative rule.
     assert_includes rules_of("Calculator#to_s"), :overrides_ancestor
+  end
+
+  def test_override_of_live_ancestor_takes_the_full_brake
+    assert_includes rules_of("Widget#render"), :overrides_ancestor
+    refute_includes rules_of("Widget#render"), :overrides_unreferenced_ancestor
+  end
+
+  def test_override_of_test_only_ancestor_takes_the_mild_brake
+    assert_includes rules_of("Relic#render"), :overrides_unreferenced_ancestor
+    refute_includes rules_of("Relic#render"), :overrides_ancestor
+    assert_operator finding("Relic#render").confidence, :>, finding("Widget#render").confidence
+  end
+
+  def test_unreferenced_hierarchy_raises_confidence
+    assert_includes rules_of("Orphan#run"), :unreferenced_hierarchy
+    refute_includes rules_of("Reached#run"), :unreferenced_hierarchy
+    assert_operator finding("Orphan#run").confidence, :>, finding("Reached#run").confidence
+  end
+
+  def test_hierarchy_referenced_only_from_tests_still_counts_as_dead_tree
+    assert_includes rules_of("TestReached#run"), :unreferenced_hierarchy
+  end
+
+  def test_unknown_hierarchy_fires_no_tree_rule
+    # Definitions without the index-computed field (nil) stay neutral.
+    refute_includes rules_of("Calculator#dead_helper"), :unreferenced_hierarchy
   end
 
   def test_test_only_reference_is_a_weaker_candidate

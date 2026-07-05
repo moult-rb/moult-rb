@@ -14,6 +14,7 @@ module Moult
       "deadcode" => ["moult/cli/dead_code_command", :DeadCodeCommand],
       "coverage" => ["moult/cli/coverage_command", :CoverageCommand],
       "duplication" => ["moult/cli/duplication_command", :DuplicationCommand],
+      "cycles" => ["moult/cli/cycles_command", :CyclesCommand],
       "health" => ["moult/cli/health_command", :HealthCommand],
       "boundaries" => ["moult/cli/boundaries_command", :BoundariesCommand],
       "flags" => ["moult/cli/flags_command", :FlagsCommand],
@@ -90,6 +91,7 @@ module Moult
           moult deadcode [PATH] [options]     List confidence-graded dead-code candidates
           moult coverage [PATH] [options]     Map symbols hot/cold/untracked from coverage
           moult duplication [PATH] [options]  List confidence-graded structural-clone groups
+          moult cycles [PATH] [options]       List circular file dependencies (constant-resolved)
           moult health [PATH] [options]       Aggregate the analyses into a composite health score
           moult boundaries [PATH] [options]   List recorded architecture-boundary violations (packwerk)
           moult flags [PATH] [options]        Catalogue OpenFeature feature-flag references (usage)

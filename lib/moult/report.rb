@@ -47,19 +47,29 @@ module Moult
 
     # One ranked file.
     class Hotspot
-      attr_reader :path, :score, :complexity, :churn, :methods, :confidence, :category
+      attr_reader :path, :score, :complexity, :churn, :methods,
+        :fan_in, :fan_out, :instability, :confidence, :category
 
       # @param path [String] path relative to the analysis root
       # @param score [Float] complexity x churn
       # @param complexity [Float] aggregate ABC for the file
       # @param churn [Integer] commits touching the file in the window
       # @param methods [Array<Method>] worst methods, highest ABC first
-      def initialize(path:, score:, complexity:, churn:, methods:, confidence: nil, category: nil)
+      # @param fan_in [Integer, nil] files depending on this file (resolved
+      #   constant references); nil when no index was built
+      # @param fan_out [Integer, nil] files this file depends on; nil likewise
+      # @param instability [Float, nil] fan_out / (fan_in + fan_out); 0 when
+      #   isolated, nil when no index was built
+      def initialize(path:, score:, complexity:, churn:, methods:,
+        fan_in: nil, fan_out: nil, instability: nil, confidence: nil, category: nil)
         @path = path
         @score = score
         @complexity = complexity
         @churn = churn
         @methods = methods
+        @fan_in = fan_in
+        @fan_out = fan_out
+        @instability = instability
         @confidence = confidence
         @category = category
       end
@@ -75,6 +85,9 @@ module Moult
           score: score,
           complexity: complexity,
           churn: churn,
+          fan_in: fan_in,
+          fan_out: fan_out,
+          instability: instability,
           confidence: confidence,
           category: category,
           methods: methods.map(&:to_h)

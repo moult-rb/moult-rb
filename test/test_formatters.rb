@@ -30,8 +30,16 @@ class TestTableFormatter < Minitest::Test
     assert_includes out, "SCORE"
     assert_includes out, "COMPLEXITY"
     assert_includes out, "CHURN"
+    assert_includes out, "INST"
+    assert_includes out, "0.33"
     assert_includes out, "lib/foo.rb"
     assert_includes out, "Foo::Bar#baz"
+  end
+
+  def test_nil_coupling_renders_dashes
+    out = Moult::Formatters::Table.render(report_with_n_hotspots(1))
+    row = out.lines.grep(/\A\s*1\s/).first
+    assert_match(/-\s+-\s+-\s+f0\.rb/, row)
   end
 
   def test_empty_report_message

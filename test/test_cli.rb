@@ -47,6 +47,30 @@ class TestCLI < Minitest::Test
     end
   end
 
+  def test_hotspots_coupling_columns_populate_from_the_index
+    skip "rubydex unavailable" unless Moult::Index.available?
+    validator = schemer("hotspots.schema.json")
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "a.rb"), "class A\n  def f = B.new(foo)\nend\n")
+      File.write(File.join(dir, "b.rb"), "class B\n  def g; foo(bar); end\nend\n")
+
+      out, _err, status = run_cli(["hotspots", dir, "--format", "json", "--quiet"])
+      assert_equal 0, status
+      data = JSON.parse(out)
+      assert_empty validator.validate(data).to_a
+      a = data["hotspots"].find { |h| h["path"] == "a.rb" }
+      assert_equal 1, a["fan_out"]
+      assert_equal 0, a["fan_in"]
+      assert_equal 1.0, a["instability"]
+
+      out, _err, status = run_cli(["hotspots", dir, "--format", "json", "--quiet", "--no-coupling"])
+      assert_equal 0, status
+      data = JSON.parse(out)
+      assert_empty validator.validate(data).to_a
+      assert_nil data["hotspots"].first["fan_in"]
+    end
+  end
+
   def test_invalid_format_errors
     _out, err, status = run_cli(["hotspots", ".", "--format", "yaml", "--quiet"])
     assert_equal 1, status

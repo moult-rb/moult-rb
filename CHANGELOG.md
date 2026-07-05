@@ -12,6 +12,20 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- `moult cycles` — circular file dependencies over resolved constant
+  references (the dependency signal that survives Zeitwerk autoloading), with
+  a typed contract (`schema/cycles.schema.json`). Each finding carries its
+  member files, the in-cycle evidence edges, and a membership-stable
+  `cycle_group` fingerprint (`"scc:<hash>"`). Report-only; no gate
+  integration.
+- `fan_in`/`fan_out`/`instability` on hotspot findings, from the same
+  constant-reference index (`--no-coupling` to skip). Coupling is context
+  only — the score stays `complexity × churn`. Additive/optional in the
+  schema, so `schema_version` stays 1.
+- Hierarchy-aware dead-code confidence: a new `overrides_unreferenced_ancestor`
+  rule (mild −0.1 brake when the overridden ancestor type is itself
+  unreferenced outside tests) and a new `unreferenced_hierarchy` rule (+0.1
+  when neither the owner type nor any descendant is referenced outside tests).
 - `clone_group` on duplication findings and gate contributions — a
   `"<kind>:<structural-hash>"` join key (kind `identical`|`similar`) shared by
   every occurrence of a clone group, so consumers can link exact twins. Null on
@@ -19,6 +33,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `schema_version` stays 1.
 
 ### Changed
+- `overrides_ancestor` (−0.4) now fires only when the overridden ancestor type
+  is live or of unknown liveness; a provably unreferenced ancestor downgrades
+  to the mild `overrides_unreferenced_ancestor` brake instead.
 - The gate now emits one duplication contribution per in-diff occurrence
   (previously one per clone group, attributed to its first in-diff
   occurrence), so every site of a clone is visible downstream. Verdicts are

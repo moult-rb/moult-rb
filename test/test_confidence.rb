@@ -24,7 +24,9 @@ class TestConfidence < Minitest::Test
       override_of: nil,
       deprecated: false,
       index_resolved: true,
-      runtime: nil
+      runtime: nil,
+      override_live: nil,
+      hierarchy_referenced: nil
     }
     C::Context.new(**defaults.merge(overrides))
   end
@@ -119,6 +121,44 @@ class TestConfidence < Minitest::Test
   def test_no_override_rule_when_not_overriding
     finding = C.score(ctx(visibility: :public, override_of: nil), rules: only(:overrides_ancestor))
     assert_nil reason(finding, :overrides_ancestor)
+  end
+
+  def test_override_of_live_or_unknown_ancestor_takes_full_brake
+    rules = only(:overrides_ancestor, :overrides_unreferenced_ancestor)
+    [true, nil].each do |live|
+      finding = C.score(ctx(override_of: "App::Base", override_live: live), rules: rules)
+      refute_nil reason(finding, :overrides_ancestor), "override_live=#{live.inspect}"
+      assert_nil reason(finding, :overrides_unreferenced_ancestor)
+    end
+  end
+
+  def test_override_of_unreferenced_ancestor_takes_mild_brake
+    rules = only(:overrides_ancestor, :overrides_unreferenced_ancestor)
+    finding = C.score(ctx(override_of: "App::Base", override_live: false), rules: rules)
+    assert_nil reason(finding, :overrides_ancestor)
+    weak = reason(finding, :overrides_unreferenced_ancestor)
+    assert_equal(-0.1, weak.delta)
+    assert_includes weak.detail, "App::Base"
+  end
+
+  def test_unreferenced_hierarchy_raises_only_on_a_provably_dead_tree
+    finding = C.score(ctx(visibility: :private, hierarchy_referenced: false), rules: only(:unreferenced_hierarchy))
+    assert_in_delta 0.75 + 0.1, finding.confidence, 0.001
+
+    [true, nil].each do |referenced|
+      finding = C.score(ctx(hierarchy_referenced: referenced), rules: only(:unreferenced_hierarchy))
+      assert_nil reason(finding, :unreferenced_hierarchy), "hierarchy_referenced=#{referenced.inspect}"
+    end
+  end
+
+  def test_dead_tree_override_composition
+    # private base 0.75 + private_unused 0.1 + overrides_unreferenced_ancestor
+    # -0.1 + unreferenced_hierarchy 0.1 = 0.85
+    finding = C.score(
+      ctx(visibility: :private, override_of: "App::Base", override_live: false, hierarchy_referenced: false),
+      rules: only(:private_unused, :overrides_ancestor, :overrides_unreferenced_ancestor, :unreferenced_hierarchy)
+    )
+    assert_in_delta 0.85, finding.confidence, 0.001
   end
 
   def test_deprecated_raises_confidence

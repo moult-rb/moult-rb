@@ -93,6 +93,23 @@
           "type": "integer",
           "minimum": 0
         },
+        "fan_in": {
+          "description": "Files depending on this file via resolved constant references. Null when no index was built (--no-coupling or index failure).",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "fan_out": {
+          "description": "Files this file depends on via resolved constant references. Null when no index was built.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "instability": {
+          "description": "fan_out / (fan_in + fan_out); 0 when the file is isolated. Null when no index was built.",
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "common.schema.json#/$defs/unit_interval"}
+          ]
+        },
         "methods": {
           "description": "Worst methods in the file, highest ABC first.",
           "type": "array",

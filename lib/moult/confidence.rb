@@ -39,7 +39,9 @@ module Moult
       :override_of,        # String, nil: ancestor whose method this overrides
       :deprecated,         # Boolean
       :index_resolved,
-      :runtime             # Symbol, nil: :hot/:cold/:untracked from coverage (Phase 3)
+      :runtime,            # Symbol, nil: :hot/:cold/:untracked from coverage (Phase 3)
+      :override_live,      # Boolean, nil: the overridden ancestor type has a production reference; nil = ancestor not indexed (unknown)
+      :hierarchy_referenced # Boolean, nil: the owner type or a descendant has a production reference; nil = owner not indexed (unknown)
     )
 
     # One auditable contribution to a finding's confidence.
