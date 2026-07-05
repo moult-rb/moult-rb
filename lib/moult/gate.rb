@@ -127,18 +127,21 @@ module Moult
       end
     end
 
-    # One observation per clone GROUP touching the diff (mass is a group property);
-    # attributed to its first in-diff occurrence.
+    # One observation per in-diff OCCURRENCE, so every site of a clone is visible
+    # downstream. Mass stays a group property shared by all of them, and the
+    # occurrences of one group share its clone_group join key.
     def scope_duplication(run, diff)
       return nil unless run.ok?
 
-      run.value.findings.filter_map do |finding|
-        occ = finding.occurrences.find { |o| diff.in_diff?(path: o.path, start_line: o.line, end_line: o.line) }
-        next unless occ
+      run.value.findings.flat_map do |finding|
+        finding.occurrences.filter_map do |occ|
+          next unless diff.in_diff?(path: occ.path, start_line: occ.line, end_line: occ.line)
 
-        Evaluation::DuplicationObs.new(
-          symbol_id: occ.symbol_id, path: occ.path, line: occ.line, mass: finding.mass
-        )
+          Evaluation::DuplicationObs.new(
+            symbol_id: occ.symbol_id, path: occ.path, line: occ.line,
+            mass: finding.mass, clone_group: finding.clone_group
+          )
+        end
       end
     end
 

@@ -19,7 +19,7 @@ module Moult
       DeadCodeObs = Struct.new(:symbol_id, :path, :line, :confidence)
       BoundaryObs = Struct.new(:symbol_id, :path, :line, :severity, :violation_type)
       ComplexityObs = Struct.new(:symbol_id, :path, :line, :abc)
-      DuplicationObs = Struct.new(:symbol_id, :path, :line, :mass)
+      DuplicationObs = Struct.new(:symbol_id, :path, :line, :mass, :clone_group)
 
       # The full input. Each analysis's list is nil when that analysis was skipped
       # (errored, or not applicable — e.g. a non-packwerk repo for boundaries);
@@ -39,10 +39,11 @@ module Moult
 
       # One contributing finding behind a rule outcome. Stays confidence-graded:
       # +value+ is the observed signal (confidence/abc/mass/severity), never a
-      # claim of certainty.
-      Contribution = Struct.new(:category, :path, :symbol_id, :line, :value) do
+      # claim of certainty. +clone_group+ links occurrences of the same clone
+      # group ("<kind>:<structural-hash>"); null outside duplication.
+      Contribution = Struct.new(:category, :path, :symbol_id, :line, :value, :clone_group) do
         def to_h
-          {category: category, path: path, symbol_id: symbol_id, line: line, value: value}
+          {category: category, path: path, symbol_id: symbol_id, line: line, value: value, clone_group: clone_group}
         end
       end
 
@@ -123,8 +124,10 @@ module Moult
         t = policy.duplication_max_mass
         outcome("new_code_duplication_ceiling", "<= #{t}", obs, diagnostic, "structural_duplication") do |list|
           violating = list.select { |o| o.mass > t }
+          # Observations are per occurrence, but the reason still counts GROUPS.
           detail = phrase(violating, "no clone group touching the diff exceeds mass #{t}",
-            "clone group(s) touching the diff exceed mass #{t}")
+            "clone group(s) touching the diff exceed mass #{t}",
+            count: violating.map(&:clone_group).uniq.size)
           [violating, list.map(&:mass).max, detail, ->(o) { o.mass }]
         end
       end
@@ -142,7 +145,7 @@ module Moult
           rule: rule, evaluated: true, observed: observed, threshold: threshold,
           passed: violating.empty?,
           reasons: [Reason.new(rule: rule.to_sym, detail: detail)],
-          findings: violating.map { |o| Contribution.new(category: category, path: o.path, symbol_id: o.symbol_id, line: o.line, value: value.call(o)) }
+          findings: violating.map { |o| Contribution.new(category: category, path: o.path, symbol_id: o.symbol_id, line: o.line, value: value.call(o), clone_group: (o.clone_group if o.respond_to?(:clone_group))) }
         )
       end
 
@@ -155,9 +158,11 @@ module Moult
         )
       end
 
-      # "no X ..." when nothing violates, "<n> X ..." otherwise.
-      def phrase(violating, none, some)
-        violating.empty? ? none : "#{violating.size} #{some}"
+      # "no X ..." when nothing violates, "<n> X ..." otherwise. +count+ overrides
+      # the rendered n where one violation spans several observations (duplication
+      # counts groups, not occurrences).
+      def phrase(violating, none, some, count: violating.size)
+        violating.empty? ? none : "#{count} #{some}"
       end
 
       def verdict_reasons(verdict, failed)

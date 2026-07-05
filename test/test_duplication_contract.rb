@@ -45,6 +45,7 @@ class TestDuplicationContract < Minitest::Test
       assert_includes %w[identical similar], finding["kind"]
       assert_kind_of String, finding["node_type"]
       assert_kind_of Integer, finding["mass"]
+      assert_match(/\A#{finding["kind"]}:/, finding["clone_group"], "clone_group is \"<kind>:<structural-hash>\"")
       refute_empty finding.fetch("reasons")
       assert(finding["reasons"].all? { |r| r.key?("rule") && r.key?("delta") && r.key?("detail") })
     end

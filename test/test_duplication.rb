@@ -38,6 +38,12 @@ class TestDuplication < Minitest::Test
     build.findings.each { |f| assert_operator f.occurrences.size, :>=, 2 }
   end
 
+  def test_each_group_mints_a_kind_prefixed_clone_group_key
+    findings = build.findings
+    findings.each { |f| assert_match(/\A#{f.kind}:-?\d+\z/, f.clone_group) }
+    assert_equal findings.size, findings.map(&:clone_group).uniq.size, "clone_group is unique per group"
+  end
+
   def test_a_high_min_mass_filters_out_the_small_clones
     assert_empty build(min_mass: 10_000).findings
   end

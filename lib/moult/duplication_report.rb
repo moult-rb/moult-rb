@@ -21,8 +21,10 @@ module Moult
     end
 
     # A confidence-graded clone group. Carries its reasons so no claim is made
-    # without a recorded justification.
-    Finding = Struct.new(:confidence, :kind, :node_type, :mass, :reasons, :occurrences) do
+    # without a recorded justification. +clone_group+ ("<kind>:<structural-hash>")
+    # is the group's join key, shared by every occurrence; stable within a report
+    # only (the hash comes from the detector backend).
+    Finding = Struct.new(:confidence, :kind, :node_type, :mass, :clone_group, :reasons, :occurrences) do
       def to_h
         {
           category: Duplication::Confidence::CATEGORY,
@@ -30,6 +32,7 @@ module Moult
           kind: kind.to_s,
           node_type: node_type,
           mass: mass,
+          clone_group: clone_group,
           reasons: reasons.map(&:to_h),
           occurrences: occurrences.map(&:to_h)
         }
