@@ -23,11 +23,14 @@ module Moult
     # @param files [Array<String>] absolute paths of Ruby files to analyse
     # @param churn [Hash{String=>Integer}] path (relative to root) => commit count
     # @param worst_methods [Integer] how many worst methods to keep per file
+    # @param edges [Array<#src,#dst>, nil] unique file dependency pairs (e.g.
+    #   {Index#file_edges}); nil leaves the coupling columns null
     # @return [Report]
     def build_report(root:, files:, churn:, worst_methods: DEFAULT_WORST_METHODS,
-      git_ref: nil, generated_at: nil, churn_window: nil, churn_since: nil)
+      git_ref: nil, generated_at: nil, churn_window: nil, churn_since: nil, edges: nil)
+      coupling = coupling_degrees(edges)
       hotspots = files.filter_map do |abs|
-        hotspot_for(abs, root: root, churn: churn, worst_methods: worst_methods)
+        hotspot_for(abs, root: root, churn: churn, worst_methods: worst_methods, coupling: coupling)
       end
       hotspots.sort_by! { |h| [-h.score, -h.complexity, h.path] }
 
@@ -42,7 +45,7 @@ module Moult
     end
 
     # @return [Report::Hotspot, nil] nil when the file has no scoring methods
-    def hotspot_for(abs, root:, churn:, worst_methods:)
+    def hotspot_for(abs, root:, churn:, worst_methods:, coupling: nil)
       rel = relative_path(abs, root)
       methods = Parser.parse_file(abs).map { |m| build_method(m, rel) }
       complexity = methods.sum(0.0, &:abc)
@@ -56,14 +59,41 @@ module Moult
         score: combine(complexity, churn_count).round(2),
         complexity: complexity.round(2),
         churn: churn_count,
-        methods: kept
+        methods: kept,
+        **coupling_fields(rel, coupling)
       )
     end
 
-    # The v0.1 scoring rule. Swap-point for future normalisation.
+    # The v0.1 scoring rule. Swap-point for future normalisation. Coupling is
+    # deliberately not a factor: weighting by instability would bury complex,
+    # churned, high-fan-in files — exactly the hotspots that matter most.
     # @return [Numeric]
     def combine(complexity, churn)
       complexity * churn
+    end
+
+    # In/out degree per file over the unique dependency pairs. nil when no
+    # edges were supplied (coupling unknown).
+    def coupling_degrees(edges)
+      return nil unless edges
+      {
+        out: edges.group_by(&:src).transform_values(&:size),
+        in: edges.group_by(&:dst).transform_values(&:size)
+      }
+    end
+
+    # A file absent from the edge set is measured-as-isolated (0/0), not
+    # unknown: the index saw it and found no resolved dependencies.
+    def coupling_fields(rel, coupling)
+      return {fan_in: nil, fan_out: nil, instability: nil} unless coupling
+      fan_in = coupling[:in][rel] || 0
+      fan_out = coupling[:out][rel] || 0
+      total = fan_in + fan_out
+      {
+        fan_in: fan_in,
+        fan_out: fan_out,
+        instability: total.zero? ? 0.0 : (fan_out.to_f / total).round(2)
+      }
     end
 
     def build_method(method_def, rel)

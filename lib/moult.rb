@@ -38,6 +38,10 @@ module Moult
   autoload :Duplication, "moult/duplication"
   autoload :DuplicationReport, "moult/duplication_report"
 
+  # Static slice: circular file dependencies over resolved constant references.
+  autoload :Cycles, "moult/cycles"
+  autoload :CyclesReport, "moult/cycles_report"
+
   # Health slice: a composite health score aggregating the other analyses.
   autoload :Health, "moult/health"
   autoload :HealthReport, "moult/health_report"
@@ -69,6 +73,8 @@ module Moult
     autoload :CoverageJson, "moult/formatters/coverage_json"
     autoload :DuplicationTable, "moult/formatters/duplication_table"
     autoload :DuplicationJson, "moult/formatters/duplication_json"
+    autoload :CyclesTable, "moult/formatters/cycles_table"
+    autoload :CyclesJson, "moult/formatters/cycles_json"
     autoload :HealthTable, "moult/formatters/health_table"
     autoload :HealthJson, "moult/formatters/health_json"
     autoload :BoundariesTable, "moult/formatters/boundaries_table"

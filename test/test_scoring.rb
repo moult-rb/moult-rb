@@ -84,6 +84,54 @@ class TestScoring < Minitest::Test
     end
   end
 
+  FileEdge = Struct.new(:src, :dst)
+
+  def test_coupling_degrees_from_edges
+    Dir.mktmpdir do |dir|
+      write(dir, "hub.rb", "def h; x = 1; end")
+      write(dir, "a.rb", "def a; x = 1; end")
+      write(dir, "b.rb", "def b; x = 1; end")
+      edges = [
+        FileEdge.new("a.rb", "hub.rb"),
+        FileEdge.new("b.rb", "hub.rb"),
+        FileEdge.new("hub.rb", "a.rb")
+      ]
+
+      report = build(dir, churn: Hash.new(0), edges: edges)
+      hub = report.hotspots.find { |h| h.path == "hub.rb" }
+
+      assert_equal 2, hub.fan_in
+      assert_equal 1, hub.fan_out
+      assert_in_delta 0.33, hub.instability, 0.001
+    end
+  end
+
+  def test_file_absent_from_edges_is_isolated_not_unknown
+    Dir.mktmpdir do |dir|
+      write(dir, "solo.rb", "def s; x = 1; end")
+
+      report = build(dir, churn: Hash.new(0), edges: [])
+      solo = report.hotspots.first
+
+      assert_equal 0, solo.fan_in
+      assert_equal 0, solo.fan_out
+      assert_equal 0.0, solo.instability
+    end
+  end
+
+  def test_nil_edges_leave_coupling_columns_nil
+    Dir.mktmpdir do |dir|
+      write(dir, "solo.rb", "def s; x = 1; end")
+
+      report = build(dir, churn: Hash.new(0))
+      solo = report.hotspots.first
+
+      assert_nil solo.fan_in
+      assert_nil solo.fan_out
+      assert_nil solo.instability
+    end
+  end
+
   private
 
   def write(dir, rel, contents)
@@ -92,8 +140,8 @@ class TestScoring < Minitest::Test
     File.write(path, contents)
   end
 
-  def build(dir, churn:, worst_methods: Moult::Scoring::DEFAULT_WORST_METHODS)
+  def build(dir, churn:, worst_methods: Moult::Scoring::DEFAULT_WORST_METHODS, edges: nil)
     files = Dir.glob(File.join(dir, "**", "*.rb"))
-    Moult::Scoring.build_report(root: dir, files: files, churn: churn, worst_methods: worst_methods)
+    Moult::Scoring.build_report(root: dir, files: files, churn: churn, worst_methods: worst_methods, edges: edges)
   end
 end

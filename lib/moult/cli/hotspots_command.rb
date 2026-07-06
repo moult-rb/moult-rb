@@ -36,7 +36,7 @@ module Moult
       private
 
       def parse(argv)
-        options = {format: :table, limit: DEFAULT_LIMIT, since: Churn::DEFAULT_SINCE, quiet: false}
+        options = {format: :table, limit: DEFAULT_LIMIT, since: Churn::DEFAULT_SINCE, quiet: false, coupling: true}
         @parser = OptionParser.new do |o|
           o.banner = "Usage: moult hotspots [PATH] [options]"
           o.separator ""
@@ -44,6 +44,7 @@ module Moult
           o.on("--format FORMAT", [:table, :json], "Output format: table (default) or json") { |v| options[:format] = v }
           o.on("--limit N", Integer, "Show top N hotspots (default #{DEFAULT_LIMIT}; 0 for all)") { |v| options[:limit] = v }
           o.on("--since DATE", "Churn window start, any git --since value (default '#{Churn::DEFAULT_SINCE}')") { |v| options[:since] = v }
+          o.on("--[no-]coupling", "Add fan-in/fan-out/instability from a constant-reference index (default on)") { |v| options[:coupling] = v }
           o.on("--quiet", "Suppress informational notes on stderr") { options[:quiet] = true }
           o.on("-h", "--help", "Show this message") { options[:help] = true }
         end
@@ -74,8 +75,19 @@ module Moult
           git_ref: Git.head_ref(root_dir),
           generated_at: Time.now.utc.iso8601,
           churn_window: window_label(options[:since]),
-          churn_since: explicit_since(options[:since])
+          churn_since: explicit_since(options[:since]),
+          edges: coupling_edges(root_dir, files, options)
         )
+      end
+
+      # nil (columns stay null) when coupling is off or the index fails —
+      # a broken index should not take the whole hotspots run down with it.
+      def coupling_edges(root_dir, files, options)
+        return nil unless options[:coupling]
+        Index.build(root: root_dir, paths: files).file_edges
+      rescue Moult::Error => e
+        note(options, "coupling unavailable (#{e.message}); columns left empty.")
+        nil
       end
 
       def render(report, options)

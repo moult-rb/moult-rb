@@ -111,6 +111,113 @@ class TestIndex < Minitest::Test
     end
   end
 
+  def test_file_edges_from_mutual_constant_references
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, "a.rb"), <<~RUBY)
+        class A
+          def touch = B
+        end
+      RUBY
+      File.write(File.join(root, "b.rb"), <<~RUBY)
+        class B
+          def touch = A
+        end
+      RUBY
+      index = Moult::Index.build(root: root, paths: [File.join(root, "a.rb"), File.join(root, "b.rb")])
+      edges = index.file_edges
+      assert_equal [%w[a.rb b.rb], %w[b.rb a.rb]], edges.map { |e| [e.src, e.dst] }
+      a_to_b = edges.first
+      assert_equal "B", a_to_b.constant
+      assert_equal 2, a_to_b.span.start_line # `def touch = B` is on line 2, 1-based
+    end
+  end
+
+  def test_file_edges_reopened_constant_targets_every_definition_file
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, "c.rb"), "class C; end\n")
+      File.write(File.join(root, "c2.rb"), "class C; def more; end; end\n")
+      File.write(File.join(root, "a.rb"), "A = C\n")
+      paths = %w[c.rb c2.rb a.rb].map { |f| File.join(root, f) }
+      index = Moult::Index.build(root: root, paths: paths)
+      assert_equal [%w[a.rb c.rb], %w[a.rb c2.rb]], index.file_edges.map { |e| [e.src, e.dst] }
+    end
+  end
+
+  def test_file_edges_skips_qualifier_segments_of_constant_paths
+    Dir.mktmpdir do |root|
+      # `module NS` is reopened in both files, so a qualifier edge for the
+      # `NS` token in `NS::Target` would reach every file in the namespace.
+      File.write(File.join(root, "target.rb"), "module NS\n  class Target\n  end\nend\n")
+      File.write(File.join(root, "other.rb"), "module NS\n  class Other\n  end\nend\n")
+      File.write(File.join(root, "user.rb"), "class User\n  def touch = NS::Target\nend\n")
+      paths = %w[target.rb other.rb user.rb].map { |f| File.join(root, f) }
+      index = Moult::Index.build(root: root, paths: paths)
+
+      assert_equal [%w[user.rb target.rb]], index.file_edges.map { |e| [e.src, e.dst] }
+      assert_equal "NS::Target", index.file_edges.first.constant
+    end
+  end
+
+  def test_file_edges_drops_self_edges_and_builtins
+    with_indexed_project do |index, _root|
+      # SOURCE references Shop::Widget and Shop::LIVE_CONST from within
+      # sample.rb itself, and Object/Kernel via puts/new.
+      assert_empty index.file_edges
+    end
+  end
+
+  def test_owner_hierarchy_reference_paths_on_a_dead_tree
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, "base.rb"), "class Base\n  def run; end\nend\n")
+      File.write(File.join(root, "child.rb"), "class Child < Base\n  def run; end\nend\n")
+      paths = [File.join(root, "base.rb"), File.join(root, "child.rb")]
+      index = Moult::Index.build(root: root, paths: paths)
+
+      # The `< Base` clause is a reference from inside the hierarchy's own
+      # files, so both methods see a provably-unreferenced tree.
+      assert_equal [], defn(index, "Base#run").owner_hierarchy_reference_paths
+      assert_equal [], defn(index, "Child#run").owner_hierarchy_reference_paths
+    end
+  end
+
+  def test_descendant_reference_counts_for_the_ancestors_methods
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, "base.rb"), "class Base\n  def run; end\nend\n")
+      File.write(File.join(root, "child.rb"), "class Child < Base\nend\n")
+      File.write(File.join(root, "caller.rb"), "X = Child\n")
+      paths = %w[base.rb child.rb caller.rb].map { |f| File.join(root, f) }
+      index = Moult::Index.build(root: root, paths: paths)
+
+      assert_equal ["caller.rb"], defn(index, "Base#run").owner_hierarchy_reference_paths
+    end
+  end
+
+  def test_singleton_method_judges_the_attached_class
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, "svc.rb"), "class Svc\n  def self.build; end\nend\n")
+      File.write(File.join(root, "caller.rb"), "X = Svc\n")
+      paths = [File.join(root, "svc.rb"), File.join(root, "caller.rb")]
+      index = Moult::Index.build(root: root, paths: paths)
+
+      assert_equal ["caller.rb"], defn(index, "Svc.build").owner_hierarchy_reference_paths
+    end
+  end
+
+  def test_module_hierarchy_degrades_gracefully
+    Dir.mktmpdir do |root|
+      File.write(File.join(root, "m.rb"), "module Helper\n  def assist; end\nend\n")
+      File.write(File.join(root, "user.rb"), "class User\n  include Helper\nend\n")
+      paths = [File.join(root, "m.rb"), File.join(root, "user.rb")]
+      index = Moult::Index.build(root: root, paths: paths)
+
+      # Exploratory pin: whatever rubydex 0.2.6 returns for a module's
+      # descendants, the field must be an Array or nil — either degrades
+      # gracefully in the confidence rule (fires less or not at all).
+      value = defn(index, "Helper#assist").owner_hierarchy_reference_paths
+      assert value.nil? || value.is_a?(Array), "got #{value.inspect}"
+    end
+  end
+
   def test_override_of_detects_ancestor_method
     Dir.mktmpdir do |root|
       File.write(File.join(root, "h.rb"), <<~RUBY)

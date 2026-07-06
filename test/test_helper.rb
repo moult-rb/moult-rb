@@ -97,6 +97,9 @@ module TestHelpers
       score: 37.02,
       complexity: 12.34,
       churn: 3,
+      fan_in: 2,
+      fan_out: 1,
+      instability: 0.33,
       methods: [method]
     )
     Moult::Report.new(
@@ -225,6 +228,40 @@ module TestHelpers
       backend_version: "2.14.4",
       min_mass: 16,
       fuzzy: false
+    )
+  end
+
+  # A small, fully-populated CyclesReport for serialization/schema tests: one
+  # two-file cycle with both evidence edges and its single confidence reason.
+  def sample_cycles_report
+    span = ->(line) { Moult::Span.new(start_line: line, start_column: 2, end_line: line, end_column: 20) }
+    edge = ->(src, dst, const, line) { Moult::Index::Edge.new(src: src, dst: dst, constant: const, span: span.call(line)) }
+
+    finding = Moult::CyclesReport::Finding.new(
+      cycle_group: "scc:0a1b2c3d4e5f",
+      confidence: 0.9,
+      category: "cycle",
+      size: 2,
+      files: ["app/models/account.rb", "app/models/user.rb"],
+      reasons: [Moult::Confidence::Reason.new(
+        rule: :resolved_constant_edges,
+        delta: 0.9,
+        detail: "every edge is a resolved constant reference; reopened constants can widen a cycle"
+      )],
+      edges: [
+        edge.call("app/models/account.rb", "app/models/user.rb", "User", 4),
+        edge.call("app/models/user.rb", "app/models/account.rb", "Account", 9)
+      ]
+    )
+    Moult::CyclesReport.new(
+      root: "/abs/project",
+      findings: [finding],
+      git_ref: "0123abc",
+      generated_at: "2026-06-29T12:00:00Z",
+      backend: "rubydex",
+      backend_version: "0.2.6",
+      resolved: true,
+      diagnostics: []
     )
   end
 

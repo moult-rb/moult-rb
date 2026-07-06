@@ -56,4 +56,29 @@ class TestContract < Minitest::Test
     bad["hotspots"][0]["confidence"] = 1.5
     refute_empty @schemer.validate(bad).to_a
   end
+
+  def test_populated_coupling_fields_validate
+    hotspot = @data.fetch("hotspots").first
+    assert_equal 2, hotspot["fan_in"]
+    assert_equal 1, hotspot["fan_out"]
+    assert_in_delta 0.33, hotspot["instability"], 0.001
+  end
+
+  # The additive-optional proof: a report built without coupling (the
+  # untouched builder) must still validate against the same schema.
+  def test_nil_coupling_report_still_validates
+    data = JSON.parse(JSON.generate(report_with_n_hotspots(2).to_h))
+    assert_empty @schemer.validate(data).to_a
+    assert_nil data.dig("hotspots", 0, "fan_in")
+  end
+
+  def test_schema_rejects_bad_coupling_values
+    bad = JSON.parse(JSON.generate(sample_report.to_h))
+    bad["hotspots"][0]["instability"] = 1.5
+    refute_empty @schemer.validate(bad).to_a
+
+    bad = JSON.parse(JSON.generate(sample_report.to_h))
+    bad["hotspots"][0]["fan_in"] = -1
+    refute_empty @schemer.validate(bad).to_a
+  end
 end

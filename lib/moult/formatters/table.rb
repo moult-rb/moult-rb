@@ -6,9 +6,9 @@ module Moult
     # formatter, so the two cannot disagree. Sorting already happened in
     # {Scoring}; this layer owns limiting and column formatting only.
     module Table
-      HEADERS = ["#", "SCORE", "COMPLEXITY", "CHURN", "FILE", "WORST METHOD"].freeze
+      HEADERS = ["#", "SCORE", "COMPLEXITY", "CHURN", "IN", "OUT", "INST", "FILE", "WORST METHOD"].freeze
       # Right-align the numeric columns; left-align file and method.
-      RIGHT_ALIGNED = [0, 1, 2, 3].freeze
+      RIGHT_ALIGNED = [0, 1, 2, 3, 4, 5, 6].freeze
       GUTTER = "  "
 
       module_function
@@ -40,6 +40,9 @@ module Moult
           num(hotspot.score),
           num(hotspot.complexity),
           hotspot.churn.to_s,
+          hotspot.fan_in ? hotspot.fan_in.to_s : "-",
+          hotspot.fan_out ? hotspot.fan_out.to_s : "-",
+          hotspot.instability ? format("%.2f", hotspot.instability) : "-",
           hotspot.path,
           worst_cell
         ]

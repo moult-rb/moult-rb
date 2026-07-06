@@ -40,10 +40,12 @@ module Moult
     def build_report(root:, files:, index:, rails:, min_confidence: 0.0,
       git_ref: nil, generated_at: nil, backend_version: nil, coverage: nil)
       dynamic_files = dynamic_dispatch_files(files, root)
+      constant_live = constant_liveness(index)
 
       findings = index.definitions.filter_map do |definition|
         next unless candidate?(definition)
-        Confidence.score(context_for(definition, index: index, rails: rails, dynamic_files: dynamic_files, coverage: coverage))
+        Confidence.score(context_for(definition, index: index, rails: rails, dynamic_files: dynamic_files,
+          coverage: coverage, constant_live: constant_live))
       end
 
       findings.select! { |f| f.confidence >= min_confidence }
@@ -68,7 +70,7 @@ module Moult
       non_test_reference_paths(definition).empty?
     end
 
-    def context_for(definition, index:, rails:, dynamic_files:, coverage: nil)
+    def context_for(definition, index:, rails:, dynamic_files:, coverage: nil, constant_live: {})
       Confidence::Context.new(
         symbol_id: definition.symbol_id,
         kind: definition.kind,
@@ -83,8 +85,32 @@ module Moult
         override_of: definition.override_of,
         deprecated: false,
         index_resolved: index.resolved?,
-        runtime: runtime_for(definition, coverage)
+        runtime: runtime_for(definition, coverage),
+        override_live: definition.override_of && constant_live[definition.override_of],
+        hierarchy_referenced: hierarchy_referenced?(definition)
       )
+    end
+
+    # Whether the owner type or any descendant is referenced outside tests.
+    # nil (unknown) propagates from the index; test filtering stays here,
+    # matching the reference_paths convention — the Index never learns what a
+    # test path is.
+    def hierarchy_referenced?(definition)
+      paths = definition.owner_hierarchy_reference_paths
+      return nil if paths.nil?
+      Array(paths).reject { |path| path.to_s.match?(TEST_PATH) }.any?
+    end
+
+    # FQ constant name => whether it has a production (non-test) reference.
+    # The liveness join for override_live: an override's ancestor *method*
+    # shares the override's name-keyed references, so the honest signal is the
+    # ancestor *type*'s constant references. Reopened constants OR together;
+    # a name absent from this map (Object, gems) stays nil — unknown.
+    def constant_liveness(index)
+      index.definitions.each_with_object({}) do |d, acc|
+        next unless d.kind == :constant
+        acc[d.name] = acc[d.name] || non_test_reference_paths(d).any?
+      end
     end
 
     # The runtime classification for this definition, joined on the same path +

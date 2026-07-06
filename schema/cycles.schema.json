@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moult-rb/moult-rb/blob/main/schema/cycles.schema.json",
+  "title": "Moult cycles report",
+  "description": "Typed output contract for `moult cycles`. Each finding is one strongly-connected component of the file dependency graph built from resolved constant references, carrying its evidence edges; nothing here asserts that a cycle is certainly harmful.",
+  "type": "object",
+  "required": ["schema_version", "tool", "analysis", "summary", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "description": "Bumped only on a breaking change to this shape.",
+      "type": "integer",
+      "const": 1
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "required": ["root", "git_ref", "generated_at", "index"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "git_ref": {"type": ["string", "null"]},
+        "generated_at": {"type": ["string", "null"], "format": "date-time"},
+        "index": {
+          "type": "object",
+          "required": ["backend", "backend_version", "resolved", "diagnostics"],
+          "additionalProperties": false,
+          "properties": {
+            "backend": {"type": "string"},
+            "backend_version": {"type": ["string", "null"]},
+            "resolved": {"type": "boolean"},
+            "diagnostics": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["cycles", "files", "largest"],
+      "additionalProperties": false,
+      "properties": {
+        "cycles": {"description": "Number of circular dependency groups.", "type": "integer", "minimum": 0},
+        "files": {"description": "Total files across all cycles.", "type": "integer", "minimum": 0},
+        "largest": {"description": "File count of the largest cycle; 0 when none.", "type": "integer", "minimum": 0}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "reason": {
+      "description": "One auditable contribution to a finding's confidence.",
+      "type": "object",
+      "required": ["rule", "delta", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "rule": {"type": "string"},
+        "delta": {"description": "Signed adjustment this rule applied.", "type": "number"},
+        "detail": {"type": "string"}
+      }
+    },
+    "edge": {
+      "description": "One in-cycle file dependency, evidenced by a representative resolved constant-reference site in the source file.",
+      "type": "object",
+      "required": ["src", "dst", "constant", "span"],
+      "additionalProperties": false,
+      "properties": {
+        "src": {"description": "Root-relative path of the referencing file.", "type": "string"},
+        "dst": {"description": "Root-relative path of the file defining the referenced constant.", "type": "string"},
+        "constant": {"description": "Fully-qualified name of the referenced constant.", "type": "string"},
+        "span": {"$ref": "common.schema.json#/$defs/span"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["cycle_group", "category", "confidence", "size", "files", "reasons", "edges"],
+      "additionalProperties": false,
+      "properties": {
+        "cycle_group": {
+          "description": "Cycle join key, \"scc:<hash of the sorted member files>\". Membership-stable across runs and machines: the same set of files is the same cycle, however its edges shift.",
+          "type": "string",
+          "pattern": "^scc:"
+        },
+        "category": {
+          "description": "Always \"cycle\" in this contract.",
+          "type": "string"
+        },
+        "confidence": {
+          "description": "Likelihood this is a genuine dependency cycle, in [0, 1]. High (edges are resolved constant references) but never 1: reopened constants can widen a cycle.",
+          "$ref": "common.schema.json#/$defs/unit_interval"
+        },
+        "size": {
+          "description": "Number of files in the cycle.",
+          "type": "integer",
+          "minimum": 2
+        },
+        "files": {
+          "description": "Sorted root-relative paths of the cycle's members.",
+          "type": "array",
+          "minItems": 2,
+          "items": {"type": "string"}
+        },
+        "reasons": {
+          "description": "The factors behind the confidence, in application order.",
+          "type": "array",
+          "items": {"$ref": "#/$defs/reason"}
+        },
+        "edges": {
+          "description": "The in-cycle dependencies; a cycle has at least two.",
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/edge"}
+        }
+      }
+    }
+  }
+}

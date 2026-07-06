@@ -100,15 +100,22 @@ $ moult hotspots
 
 Hotspots (complexity x churn): 3 files — churn over last 12 months
 
-#  SCORE  COMPLEXITY  CHURN  FILE                    WORST METHOD
-1   95.2        15.9      6  app/services/charge.rb  Charge#call (15.9)
-2   59.6        19.9      3  app/models/user.rb      User#eligible? (15.9)
-3    3.0         3.0      1  lib/util.rb             Util.blank? (3.0)
+#  SCORE  COMPLEXITY  CHURN  IN  OUT  INST  FILE                    WORST METHOD
+1   95.2        15.9      6   4    1  0.20  app/services/charge.rb  Charge#call (15.9)
+2   59.6        19.9      3   7    2  0.22  app/models/user.rb      User#eligible? (15.9)
+3    3.0         3.0      1   0    0  0.00  lib/util.rb             Util.blank? (3.0)
 ```
 
 `app/models/user.rb` is the most *complex* file, but `app/services/charge.rb`
 tops the list because it changes twice as often — complexity alone would have
 missed it.
+
+`IN`/`OUT` are the file's fan-in and fan-out over **resolved constant
+references** (the same index `deadcode` uses — the dependency signal that
+survives Zeitwerk, where `require` lines are absent), and `INST` is the
+instability ratio `fan_out / (fan_in + fan_out)`. Coupling is context, not a
+factor in the score: weighting by instability would bury complex, churned,
+high-fan-in files — exactly the hotspots that matter most.
 
 ### JSON
 
@@ -136,6 +143,9 @@ moult hotspots --format json
       "score": 95.22,
       "complexity": 15.87,
       "churn": 6,
+      "fan_in": 4,
+      "fan_out": 1,
+      "instability": 0.2,
       "confidence": null,
       "category": null,
       "methods": [
@@ -163,6 +173,7 @@ today — Moult never asserts that code is dead.
 | `--format table\|json` | `table` | Output format. |
 | `--limit N` | `20` | Show the top N hotspots. `0` shows all. |
 | `--since DATE` | `12 months ago` | Churn window start; any value `git log --since` accepts (e.g. `2025-01-01`). |
+| `--[no-]coupling` | on | Compute fan-in/fan-out/instability from a constant-reference index. Off (or on index failure) the columns are `null`/`-`. |
 | `--quiet` | off | Suppress informational notes on stderr. |
 
 Moult is report-only: it exits `0` on success and non-zero only on error. There
@@ -200,12 +211,16 @@ metaprogramming, it never silently hides a candidate.
 Each finding starts from a base score (by kind and visibility) and is adjusted
 by a set of named rules, every one recorded as a `reason`:
 
-- **Raises** confidence: a private method with no caller; a `@deprecated` mark.
+- **Raises** confidence: a private method with no caller; a `@deprecated` mark;
+  a method whose **owner type and all of its descendants are unreferenced**
+  outside tests (no constant path reaches the receiver at all).
 - **Lowers** confidence: a public method (API surface); references only from
   tests; a constructor (`initialize`, invoked implicitly by `.new`); a method
   that **overrides or implements an ancestor's method** (reachable via that
-  interface — polymorphic dispatch); a file that uses
-  `send`/`define_method`/`method_missing`/`const_get`/`eval`.
+  interface — polymorphic dispatch) when the ancestor type is live or of
+  unknown liveness — an ancestor that is itself unreferenced outside tests
+  takes only a mild brake, since the whole hierarchy is likely dead together;
+  a file that uses `send`/`define_method`/`method_missing`/`const_get`/`eval`.
 - **Lowers strongly**: a Rails entrypoint — controller/mailer actions, helpers,
   job `#perform`, `before_action :symbol`-style callbacks, serializers,
   initializers. Rails awareness is on automatically when a Rails app is detected
@@ -328,6 +343,44 @@ RUNTIME  KIND    SYMBOL              LOCATION
 hot      method  Charge#call         app/services/charge.rb:2
 cold     method  Report#legacy_to_h  lib/report.rb:42
 ```
+
+## Cycles
+
+```sh
+moult cycles [PATH] [options]
+```
+
+Lists **circular file dependencies**: strongly-connected groups in the file
+graph whose edges are **resolved constant references** — the only dependency
+signal that survives Zeitwerk autoloading, where `require`-based tools see
+nothing. Superclass and mixin clauses flow through the same channel, so
+inheritance edges are included.
+
+```
+$ moult cycles
+
+Circular file dependencies (constant-resolved): 1 cycles
+
+CONF  SIZE  CYCLE             FILES
+0.90     2  scc:64df19a0b7c2  app/models/account.rb -> app/models/user.rb -> app/models/account.rb
+```
+
+`--format json` emits the typed contract (see
+[`schema/cycles.schema.json`](schema/cycles.schema.json)). Each finding carries
+its member `files`, the in-cycle `edges` (each with the referenced constant and
+the reference site's span), and a `cycle_group` fingerprint —
+`"scc:<hash of the sorted member files>"` — that is stable across runs and
+machines, so cycles can be tracked over time. Confidence is `0.9`, not `1.0`:
+a constant reopened in several files fans its edges out to every definition
+file, which can widen a cycle beyond the code that actually participates.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format table\|json` | `table` | Output format. |
+| `--quiet` | off | Suppress informational notes on stderr. |
+
+Report-only: exit `0` on success, non-zero only on error. Cycles do not feed
+the gate.
 
 ## How the score works
 

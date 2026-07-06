@@ -30,11 +30,23 @@ module Moult
     # @!attribute reference_paths [Array<String>] root-relative paths that use it
     # @!attribute override_of [String, nil] FQ name of the ancestor whose method
     #   this overrides/implements (reachable via that interface), else nil
+    # @!attribute owner_hierarchy_reference_paths [Array<String>, nil] for
+    #   methods: root-relative paths referencing the owner type or any
+    #   descendant, excluding the hierarchy's own definition files. nil when
+    #   the owner is unknown or defined outside the workspace (fact
+    #   unavailable), and always nil for constants (their own reference_paths
+    #   already carry the signal)
     Definition = Struct.new(
       :symbol_id, :kind, :name, :unqualified_name, :owner,
       :visibility, :singleton, :span, :path,
-      :reference_count, :reference_paths, :override_of
+      :reference_count, :reference_paths, :override_of,
+      :owner_hierarchy_reference_paths
     )
+
+    # One resolved constant-reference dependency between two workspace files.
+    # +constant+/+span+ identify a representative reference site (the earliest
+    # in +src+), kept as evidence rather than every duplicate site.
+    Edge = Struct.new(:src, :dst, :constant, :span)
 
     BUILTIN_SCHEME = "file:"
 
@@ -88,6 +100,33 @@ module Moult
       []
     end
 
+    # @return [Array<Index::Edge>] unique src->dst file dependencies from
+    #   resolved constant references (superclass and mixin clauses flow through
+    #   the same list, so inheritance edges are included). A constant reopened
+    #   in N files yields an edge to every in-workspace definition file;
+    #   self-edges and qualifier segments are dropped. Sorted by [src, dst] so
+    #   output is byte-stable regardless of rubydex iteration order.
+    def file_edges
+      @file_edges ||= begin
+        edges = {}
+        resolved = @graph.constant_references.select { |r| r.is_a?(Rubydex::ResolvedConstantReference) }
+        qualifiers = qualifier_references(resolved)
+        resolved.each do |ref|
+          next if qualifiers.include?(ref)
+          src = workspace_relative(ref.location)
+          next unless src
+          span = span_from(ref.location)
+          in_workspace_definitions(ref.declaration).each do |_defn, _span, dst|
+            next if dst == src
+            existing = edges[[src, dst]]
+            next if existing && existing.span.start_line <= span.start_line
+            edges[[src, dst]] = Edge.new(src: src, dst: dst, constant: ref.declaration.name, span: span)
+          end
+        end
+        edges.values.sort_by { |e| [e.src, e.dst] }
+      end
+    end
+
     private
 
     def method_definitions
@@ -96,6 +135,7 @@ module Moult
         unqualified = strip_signature(decl.unqualified_name)
         sites = method_call_sites[unqualified]
         override = override_source(decl)
+        hierarchy_refs = hierarchy_reference_paths(decl.owner)
         in_workspace_definitions(decl).map do |defn, span, rel|
           Definition.new(
             symbol_id: SymbolId.for(path: rel, start_line: span.start_line, fqname: name),
@@ -109,7 +149,8 @@ module Moult
             path: rel,
             reference_count: sites.size,
             reference_paths: sites.compact.uniq,
-            override_of: override
+            override_of: override,
+            owner_hierarchy_reference_paths: hierarchy_refs
           )
         end
       end
@@ -157,6 +198,26 @@ module Moult
         loc = defn.location
         next unless in_workspace?(loc)
         [defn, span_from(loc), workspace_relative(loc)]
+      end
+    end
+
+    # The qualifier segments of constant paths. In `Moult::Error`, rubydex
+    # records a resolved reference for the `Moult` token as well as one for
+    # `Error` — but the file dependency is on where *Error* is defined. A root
+    # namespace reopened in every file (`module Moult` in each) would otherwise
+    # fan edges out to the entire codebase, drowning the graph. A reference is
+    # a qualifier when a same-line reference to a deeper constant in its own
+    # namespace starts exactly two columns (the `::`) after it ends.
+    def qualifier_references(resolved)
+      by_line = resolved.group_by { |r| [r.location&.uri, r.location&.start_line] }
+      resolved.each_with_object(Set.new) do |ref, quals|
+        loc = ref.location
+        next unless loc
+        deeper = "#{ref.declaration.name}::"
+        quals << ref if by_line[[loc.uri, loc.start_line]].any? do |other|
+          other.declaration.name.start_with?(deeper) &&
+            other.location.start_column == loc.end_column + 2
+        end
       end
     end
 
@@ -208,6 +269,33 @@ module Moult
       nil
     rescue
       nil
+    end
+
+    # Production-reachability of a method's receiver type: the root-relative
+    # paths of constant references to the owner namespace or any descendant,
+    # minus the hierarchy's own definition files — a subclass's `< Base`
+    # clause is itself a reference to Base and would otherwise make the result
+    # never empty. nil when the owner is unknown or defined outside the
+    # workspace (Object, gems): the fact is unavailable, not "unreferenced".
+    # Cached per owner so one descendants walk serves all of its methods.
+    def hierarchy_reference_paths(owner)
+      return nil unless owner
+      @hierarchy_refs ||= {}
+      return @hierarchy_refs[owner.name] if @hierarchy_refs.key?(owner.name)
+      @hierarchy_refs[owner.name] = begin
+        # def self.x lives on the singleton class; judge the class itself.
+        target = owner.is_a?(Rubydex::SingletonClass) ? owner.attached_class : owner
+        if target.is_a?(Rubydex::Namespace)
+          namespaces = ([target] + target.descendants.to_a).uniq(&:name)
+          own_files = namespaces.flat_map { |ns| in_workspace_definitions(ns).map { |_defn, _span, rel| rel } }.uniq
+          unless own_files.empty?
+            namespaces.flat_map { |ns| ns.references.map { |ref| workspace_relative(ref.location) } }
+              .compact.uniq - own_files
+          end
+        end
+      rescue
+        nil
+      end
     end
 
     def visibility_of(decl)

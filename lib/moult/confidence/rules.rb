@@ -65,12 +65,35 @@ module Moult
         # through that ancestor's interface (polymorphic dispatch) even with no
         # by-name call site — the same signal a typed tool gets free from its
         # inheritance graph. Covers framework hooks (visitor #visit_*, job
-        # #perform) when the ancestor's source is indexed.
+        # #perform) when the ancestor's source is indexed. Fires when the
+        # ancestor type is live or of unknown liveness (Object, gems:
+        # conservative); a provably unreferenced ancestor downgrades to the
+        # weaker rule below instead.
         Rule.new(
           name: :overrides_ancestor,
-          applies: ->(c) { c.override_of },
+          applies: ->(c) { c.override_of && c.override_live != false },
           delta: -0.4,
           detail: ->(c) { "overrides #{c.override_of} (reachable via that interface)" }
+        ),
+        # The overridden ancestor type itself has no production reference: the
+        # polymorphic path exists syntactically, but nothing names the type, so
+        # the hierarchy is likely dead together. A mild brake, not the full
+        # -0.4 — the reachability is mostly moot.
+        Rule.new(
+          name: :overrides_unreferenced_ancestor,
+          applies: ->(c) { c.override_of && c.override_live == false },
+          delta: -0.1,
+          detail: ->(c) { "overrides #{c.override_of}, but that ancestor type is itself unreferenced outside tests" }
+        ),
+        # Neither the owner type nor any of its descendants is referenced in
+        # production: no constant path reaches the method's receiver at all.
+        # Modest raise — dynamic-dispatch and Rails rescue rules must still be
+        # able to counteract it.
+        Rule.new(
+          name: :unreferenced_hierarchy,
+          applies: ->(c) { c.hierarchy_referenced == false },
+          delta: 0.1,
+          detail: "no reference to the owner type or any of its descendants outside tests"
         ),
         Rule.new(
           name: :private_unused,
